@@ -110,7 +110,7 @@ export default function Home() {
           </div>
 
           <div className="eco-roles">
-            <Link href="/resident" className="eco-role-btn">
+            <Link href="/auth?role=resident" className="eco-role-btn">
               <span className="eco-role-icon">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
                   <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
@@ -119,7 +119,7 @@ export default function Home() {
               Resident
             </Link>
 
-            <Link href="/collector" className="eco-role-btn">
+            <Link href="/auth?role=collector" className="eco-role-btn">
               <span className="eco-role-icon">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
                   <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
