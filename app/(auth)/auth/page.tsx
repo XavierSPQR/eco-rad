@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ function Field({
   );
 }
 
-// ── Floating leaves data ──────────────────────────────────────────────────────
+// ── Floating leaves ───────────────────────────────────────────────────────────
 
 const LEAVES = [
   { top: "6%",  left: "72%", size: 18, rot: 20,  delay: 0    },
@@ -136,6 +138,14 @@ const LEAVES = [
 
 export default function AuthPage() {
   const [tab, setTab] = useState<"login" | "signup">("login");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const role = searchParams.get("role"); // "resident" | "collector" | null
+
+  function handleSignIn() {
+    // Replace with real auth logic — role-aware redirect after login
+    router.push(role === "collector" ? "/collector" : "/resident");
+  }
 
   return (
     <div className="auth-root">
@@ -160,7 +170,7 @@ export default function AuthPage() {
       <Logo />
 
       {/* ── Auth card ── */}
-      <div className="auth-card" key={tab}>
+      <div className="auth-card">
         <div className="auth-card-header">
           <h1 className="auth-heading">
             Welcome back <span role="img" aria-label="seedling">🌱</span>
@@ -168,27 +178,25 @@ export default function AuthPage() {
           <p className="auth-subheading">Sign in to continue your eco journey.</p>
         </div>
 
-        {/* Tab switcher — visible on login view only */}
-        {tab === "login" && (
-          <div className="auth-tabs">
-            <button
-              className="auth-tab auth-tab--active"
-              onClick={() => setTab("login")}
-            >
-              Login
-            </button>
-            <button
-              className="auth-tab"
-              onClick={() => setTab("signup")}
-            >
-              Signup
-            </button>
-          </div>
-        )}
+        {/* ── Tab switcher — always visible ── */}
+        <div className="auth-tabs">
+          <button
+            className={`auth-tab ${tab === "login" ? "auth-tab--active" : ""}`}
+            onClick={() => setTab("login")}
+          >
+            Login
+          </button>
+          <button
+            className={`auth-tab ${tab === "signup" ? "auth-tab--active" : ""}`}
+            onClick={() => setTab("signup")}
+          >
+            Signup
+          </button>
+        </div>
 
         {tab === "login" ? (
 
-          /* ── Login form ─────────────────────────────────── */
+          /* ── Login form ── */
           <div className="auth-form">
             <Field icon={<IconMail />} placeholder="Email address" type="email" />
             <Field icon={<IconLock />} placeholder="Password" showToggle />
@@ -201,7 +209,9 @@ export default function AuthPage() {
               <button type="button" className="auth-forgot">Forgot password?</button>
             </div>
 
-            <button className="auth-btn auth-btn--primary">Sign In</button>
+            <button className="auth-btn auth-btn--primary" onClick={handleSignIn}>
+              Sign In
+            </button>
             <button
               className="auth-btn auth-btn--outline"
               onClick={() => setTab("signup")}
@@ -219,25 +229,17 @@ export default function AuthPage() {
 
         ) : (
 
-          /* ── Signup form ────────────────────────────────── */
+          /* ── Signup form ── */
           <div className="auth-form">
-            {/* "Sign Up" acts as the active-tab label at the top */}
-            <button
-              className="auth-btn auth-btn--primary"
-              onClick={() => setTab("login")}
-            >
-              Sign Up
-            </button>
-
             <Field icon={<IconUser />}   placeholder="Name" />
             <Field icon={<IconMapPin />} placeholder="Address" />
             <Field icon={<IconPhone />}  placeholder="Contact Num" />
             <Field icon={<IconMail />}   placeholder="Email address" type="email" />
-            <Field icon={<IconLock />}   placeholder="Password"          showToggle />
-            <Field icon={<IconLock />}   placeholder="Confirm Password"  showToggle />
+            <Field icon={<IconLock />}   placeholder="Password"         showToggle />
+            <Field icon={<IconLock />}   placeholder="Confirm Password" showToggle />
 
             <button className="auth-btn auth-btn--primary" style={{ marginTop: 6 }}>
-              Login
+              Create Account
             </button>
           </div>
 
@@ -256,7 +258,6 @@ export default function AuthPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap');
 
-        /* ── Root ── */
         .auth-root {
           min-height: 100vh;
           background: linear-gradient(135deg, #e8f5e9 0%, #f1f8f1 50%, #e0f2e9 100%);
@@ -270,7 +271,6 @@ export default function AuthPage() {
           padding: 80px 16px 40px;
         }
 
-        /* ── Leaves ── */
         .auth-leaf {
           position: absolute;
           pointer-events: none;
@@ -279,11 +279,10 @@ export default function AuthPage() {
           animation: leafDrift 7s ease-in-out infinite alternate;
         }
         @keyframes leafDrift {
-          from { transform: translateY(0px)   rotate(0deg); opacity: 0.25; }
-          to   { transform: translateY(-9px)  rotate(7deg); opacity: 0.42; }
+          from { transform: translateY(0px)  rotate(0deg); opacity: 0.25; }
+          to   { transform: translateY(-9px) rotate(7deg); opacity: 0.42; }
         }
 
-        /* ── Logo ── */
         .auth-logo {
           position: absolute;
           top: 20px;
@@ -320,7 +319,6 @@ export default function AuthPage() {
           font-weight: 500;
         }
 
-        /* ── Card ── */
         .auth-card {
           background: rgba(255,255,255,0.72);
           backdrop-filter: blur(12px);
@@ -331,16 +329,15 @@ export default function AuthPage() {
           width: 100%;
           max-width: 400px;
           box-shadow: 0 8px 40px rgba(56,142,60,0.10), 0 2px 8px rgba(0,0,0,0.05);
-          animation: cardIn 0.55s cubic-bezier(.22,1,.36,1) both;
           position: relative;
           z-index: 1;
+          animation: cardIn 0.55s cubic-bezier(.22,1,.36,1) both;
         }
         @keyframes cardIn {
           from { opacity: 0; transform: translateY(20px) scale(0.98); }
           to   { opacity: 1; transform: translateY(0)    scale(1); }
         }
 
-        /* ── Card header ── */
         .auth-card-header { margin-bottom: 20px; }
         .auth-heading {
           font-family: 'DM Serif Display', serif;
@@ -355,7 +352,7 @@ export default function AuthPage() {
           margin: 0;
         }
 
-        /* ── Tabs ── */
+        /* ── Tabs — always shown, active class driven by state ── */
         .auth-tabs {
           display: flex;
           background: #f3f4f6;
@@ -383,14 +380,12 @@ export default function AuthPage() {
           box-shadow: 0 2px 8px rgba(46,125,50,0.25);
         }
 
-        /* ── Form ── */
         .auth-form {
           display: flex;
           flex-direction: column;
           gap: 10px;
         }
 
-        /* ── Field ── */
         .auth-field {
           display: flex;
           align-items: center;
@@ -436,7 +431,6 @@ export default function AuthPage() {
         }
         .auth-eye:hover { color: #2e7d32; }
 
-        /* ── Remember row ── */
         .auth-remember-row {
           display: flex;
           align-items: center;
@@ -469,7 +463,6 @@ export default function AuthPage() {
         }
         .auth-forgot:hover { text-decoration: underline; }
 
-        /* ── Buttons ── */
         .auth-btn {
           width: 100%;
           padding: 12px;
@@ -503,7 +496,6 @@ export default function AuthPage() {
         }
         .auth-btn:active { transform: translateY(0); }
 
-        /* ── Divider ── */
         .auth-divider {
           display: flex;
           align-items: center;
@@ -525,7 +517,6 @@ export default function AuthPage() {
           white-space: nowrap;
         }
 
-        /* ── Social ── */
         .auth-social { display: flex; gap: 10px; }
         .auth-social-btn {
           flex: 1;
@@ -550,7 +541,6 @@ export default function AuthPage() {
           transform: translateY(-1px);
         }
 
-        /* ── Footer ── */
         .auth-footer {
           margin-top: 24px;
           display: flex;
@@ -574,7 +564,6 @@ export default function AuthPage() {
         }
         .auth-footer-links button:hover { color: #2e7d32; }
 
-        /* ── Responsive ── */
         @media (max-width: 480px) {
           .auth-card { padding: 24px 18px 20px; }
           .auth-heading { font-size: 1.4rem; }
