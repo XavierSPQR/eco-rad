@@ -1,0 +1,241 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f6fbf6 0%, #ffffff 40%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.leaf {
+  position: absolute;
+  opacity: 0.08;
+  color: #2f8b5c;
+  animation: float 12s linear infinite;
+}
+
+.leaf:nth-child(1) {
+  animation-delay: 0s;
+  left: 5%;
+  top: 10%;
+}
+
+.leaf:nth-child(2) {
+  animation-delay: 2s;
+  left: 80%;
+  top: 20%;
+  animation-duration: 14s;
+}
+
+.leaf:nth-child(3) {
+  animation-delay: 4s;
+  left: 15%;
+  top: 60%;
+  animation-duration: 16s;
+}
+
+.leaf:nth-child(4) {
+  animation-delay: 6s;
+  left: 85%;
+  top: 70%;
+  animation-duration: 13s;
+}
+
+.leaf:nth-child(5) {
+  animation-delay: 8s;
+  left: 30%;
+  top: 40%;
+  animation-duration: 15s;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px) translateX(0px) rotate(0deg);
+    opacity: 0.08;
+  }
+  50% {
+    opacity: 0.14;
+    transform: translateY(20vh) translateX(10px) rotate(8deg);
+  }
+  100% {
+    transform: translateY(100vh) translateX(50px) rotate(18deg);
+    opacity: 0;
+  }
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-radius: 16px;
+  padding: 2.5rem;
+  box-shadow: 0 20px 50px rgba(15, 60, 40, 0.06);
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 1.875rem;
+  font-weight: 800;
+  color: #072b1f;
+  margin: 0 0 0.5rem 0;
+}
+
+.subtitle {
+  font-size: 0.95rem;
+  color: #6b6b6b;
+  margin: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0b3b2e;
+}
+
+.input {
+  padding: 0.9rem 1rem;
+  border: 2px solid #eef6ef;
+  border-radius: 40px;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: all 0.25s ease;
+  background: #fbfff9;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #cfeee0;
+  box-shadow: 0 8px 24px rgba(31, 115, 69, 0.06);
+}
+
+.input::placeholder {
+  color: #9aa39a;
+}
+
+.checkboxGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #16a34a;
+}
+
+.checkboxLabel {
+  font-size: 0.875rem;
+  color: #6b6b6b;
+  cursor: pointer;
+  user-select: none;
+}
+
+.buttonContainer {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.signInButton,
+.signUpButton {
+  flex: 1;
+  padding: 0.9rem 1rem;
+  border: none;
+  border-radius: 40px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.28s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.signInButton {
+  background: linear-gradient(90deg, #1b8b49 0%, #16a34a 100%);
+  color: white;
+  box-shadow: 0 20px 40px rgba(22,163,74,0.16);
+}
+
+.signInButton:hover { transform: translateY(-3px); }
+.signInButton:active { transform: translateY(0); }
+
+.signUpButton {
+  background: linear-gradient(90deg, #eef9f0 0%, #f7fff7 100%);
+  color: #137a3f;
+  border: 1px solid rgba(20,80,40,0.06);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.dividerLine { flex: 1; height: 1px; background: #edf3ef; }
+.dividerText { font-size: 0.75rem; color: #9aa39a; text-transform: uppercase; }
+
+.socialButtons { display: flex; gap: 1rem; }
+.socialButton {
+  flex: 1;
+  padding: 0.75rem;
+  border: 2px solid #eef6ef;
+  background: white;
+  border-radius: 40px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #355b3f;
+}
+
+.socialButton:hover { background: #f6fff7; transform: translateY(-2px); }
+
+.socialIcon { width: 20px; height: 20px; display:flex; align-items:center; justify-content:center; }
+
+@media (max-width: 480px) {
+  .card { padding: 1.6rem; }
+  .title { font-size: 1.5rem; }
+  .buttonContainer { flex-direction: column; }
+  .socialButtons { flex-direction: column; }
+}

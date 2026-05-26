@@ -270,8 +270,7 @@ export default function ResidentDashboard() {
       </div>
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600;700&display=swap');
-
+        
         .rd-root {
           display: flex;
           flex-direction: column;

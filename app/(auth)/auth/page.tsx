@@ -268,8 +268,7 @@ export default function AuthPage() {
       </footer>
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap');
-
+        
         .auth-root {
           min-height: 100vh;
           background: linear-gradient(135deg, #e8f5e9 0%, #f1f8f1 50%, #e0f2e9 100%);

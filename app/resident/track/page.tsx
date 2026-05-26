@@ -181,8 +181,7 @@ export default function TrackTruckPage() {
       </div>
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap');
-
+        
         .tt-root {
           display: flex;
           flex-direction: column;
