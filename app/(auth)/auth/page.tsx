@@ -144,8 +144,20 @@ export default function AuthPage() {
 
   function handleSignIn() {
     // Replace with real auth logic — role-aware redirect after login
-    router.push(role === "collector" ? "/collector" : "/resident");
+    if (role === "collector") {
+      router.push("/collector");
+    } else if (role === "admin") {
+      router.push("/admin");
+    } else {
+      router.push("/resident");
+    }
   }
+
+  const loginHeading = role === "admin"
+    ? "Admin sign in"
+    : role === "collector"
+    ? "Collector sign in"
+    : "Welcome back";
 
   return (
     <div className="auth-root">
@@ -173,7 +185,7 @@ export default function AuthPage() {
       <div className="auth-card">
         <div className="auth-card-header">
           <h1 className="auth-heading">
-            Welcome back <span role="img" aria-label="seedling">🌱</span>
+            {loginHeading} <span role="img" aria-label="seedling">🌱</span>
           </h1>
           <p className="auth-subheading">Sign in to continue your eco journey.</p>
         </div>
