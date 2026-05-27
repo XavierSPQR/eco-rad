@@ -5,17 +5,17 @@ import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 
 const sidebarItems = [
-  { label: "Overview", href: "/admin/overview" },
-  { label: "Waste Management", href: "/admin/waste-management" },
-  { label: "Live Tracking", href: "/admin/live-traking" },
-  { label: "Notification", href: "/admin/notification" },
-  { label: "Users", href: "/admin/users" },
-  { label: "Employee", href: "/admin/employee" },
-  { label: "Audit Log", href: "/admin/audit-log" },
-  { label: "Complaint", href: "/admin/complaint" },
-  { label: "Vehicle", href: "/admin/vehicle" },
-  { label: "Schedule", href: "/admin/overview" },
-  { label: "Report", href: "/admin/overview" },
+  { label: "Overview", href: "/admin/overview", icon: "📊" },
+  { label: "Waste Management", href: "/admin/waste-management", icon: "♻" },
+  { label: "Live Tracking", href: "/admin/live-traking", icon: "📍" },
+  { label: "Notification", href: "/admin/notification", icon: "🔔" },
+  { label: "Users", href: "/admin/users", icon: "👥" },
+  { label: "Employee", href: "/admin/employee", icon: "🧑‍💼" },
+  { label: "Audit Log", href: "/admin/audit-log", icon: "🧾" },
+  { label: "Complaint", href: "/admin/complaint", icon: "🗣️" },
+  { label: "Vehicle", href: "/admin/vehicle", icon: "🚚" },
+  { label: "Schedule", href: "/admin/overview", icon: "🗓️" },
+  { label: "Report", href: "/admin/overview", icon: "📝" },
 ];
 
 const metrics = [
@@ -98,7 +98,10 @@ export default function AdminVehiclePage() {
               href={item.href}
               className={pathname === item.href ? "admin-nav-item active" : "admin-nav-item"}
             >
-              {item.label}
+              <span className="admin-nav-icon" aria-hidden="true">
+                {item.icon}
+              </span>
+              <span className="admin-nav-label">{item.label}</span>
             </Link>
           ))}
         </nav>
@@ -255,7 +258,9 @@ export default function AdminVehiclePage() {
         }
 
         .admin-nav-item {
-          display: block;
+          display: flex;
+          align-items: center;
+          gap: 10px;
           width: 100%;
           text-decoration: none;
           text-align: left;
@@ -264,6 +269,17 @@ export default function AdminVehiclePage() {
           border-radius: 18px;
           transition: all 0.2s ease;
           font-weight: 600;
+        }
+
+        .admin-nav-icon {
+          width: 22px;
+          display: inline-block;
+          text-align: center;
+          font-size: 1rem;
+        }
+
+        .admin-nav-label {
+          flex: 1;
         }
 
         .admin-nav-item:hover,
@@ -591,6 +607,11 @@ export default function AdminVehiclePage() {
 
           .admin-nav-item {
             text-align: center;
+            justify-content: center;
+          }
+
+          .admin-nav-label {
+            flex: 0;
           }
 
           .admin-metrics {

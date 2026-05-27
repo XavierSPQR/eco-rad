@@ -5,17 +5,17 @@ import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 
 const sidebarItems = [
-  { label: "Overview", href: "/admin/overview" },
-  { label: "Waste Management", href: "/admin/waste-management" },
-  { label: "Live Tracking", href: "/admin/live-traking" },
-  { label: "Notification", href: "/admin/notification" },
-  { label: "Users", href: "/admin/users" },
-  { label: "Employee", href: "/admin/employee" },
-  { label: "Audit Log", href: "/admin/audit-log" },
-  { label: "Complaint", href: "/admin/complaint" },
-  { label: "Vehicle", href: "/admin/vehicle" },
-  { label: "Schedule", href: "/admin/overview" },
-  { label: "Report", href: "/admin/overview" },
+  { label: "Overview", href: "/admin/overview", icon: "📊" },
+  { label: "Waste Management", href: "/admin/waste-management", icon: "♻" },
+  { label: "Live Tracking", href: "/admin/live-traking", icon: "📍" },
+  { label: "Notification", href: "/admin/notification", icon: "🔔" },
+  { label: "Users", href: "/admin/users", icon: "👥" },
+  { label: "Employee", href: "/admin/employee", icon: "🧑‍💼" },
+  { label: "Audit Log", href: "/admin/audit-log", icon: "🧾" },
+  { label: "Complaint", href: "/admin/complaint", icon: "🗣️" },
+  { label: "Vehicle", href: "/admin/vehicle", icon: "🚚" },
+  { label: "Schedule", href: "/admin/overview", icon: "🗓️" },
+  { label: "Report", href: "/admin/overview", icon: "📝" },
 ];
 
 const metrics = [
@@ -65,7 +65,67 @@ export default function AdminLiveTrackingPage() {
     <div className="admin-root">
       <aside className="admin-sidebar">
         <div className="admin-logo">
-          <div className="admin-logo-icon">♻</div>
+          <div className="admin-logo-icon" aria-label="EcoCycle Lanka logo">
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 64 64"
+              xmlns="http://www.w3.org/2000/svg"
+              role="img"
+              aria-hidden="true"
+            >
+              {/* Sri Lanka-inspired silhouette */}
+              <path
+                d="M32 6c6 4 12 4 16 9 4 5 6 12 4 19-2 7-4 10-6 14-2 4-2 8-4 12-2 4-8 6-14 6s-12-2-14-6c-2-4-2-8-4-12-2-4-4-7-6-14-2-7 0-14 4-19 4-5 10-5 16-9z"
+                fill="none"
+                stroke="white"
+                strokeWidth="3"
+                strokeLinejoin="round"
+              />
+              {/* Recycle loop */}
+              <path
+                d="M22 22c3-6 9-9 16-8 7 1 12 6 13 13"
+                fill="none"
+                stroke="white"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+              <path
+                d="M46 22l3 6-6-1"
+                fill="none"
+                stroke="white"
+                strokeWidth="3"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              <path
+                d="M42 42c-3 6-9 9-16 8-7-1-12-6-13-13"
+                fill="none"
+                stroke="white"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+              <path
+                d="M18 42l-3-6 6 1"
+                fill="none"
+                stroke="white"
+                strokeWidth="3"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              {/* Tree leaf/brand mark */}
+              <path
+                d="M32 28c6 1 10 6 10 12-6 1-12-2-15-7-1-2-1-4 0-5 2-1 3-1 5 0z"
+                fill="white"
+                opacity="0.95"
+              />
+              <path
+                d="M32 40c-1-3-1-6 1-9 2-3 6-5 10-5-1 6-4 11-10 14z"
+                fill="white"
+                opacity="0.85"
+              />
+            </svg>
+          </div>
           <div>
             <p>EcoCycle</p>
             <small>LANKA</small>
@@ -79,7 +139,10 @@ export default function AdminLiveTrackingPage() {
               href={item.href}
               className={pathname === item.href ? "admin-nav-item active" : "admin-nav-item"}
             >
-              {item.label}
+              <span className="admin-nav-icon" aria-hidden="true">
+                {item.icon}
+              </span>
+              <span className="admin-nav-label">{item.label}</span>
             </Link>
           ))}
         </nav>
@@ -265,7 +328,9 @@ export default function AdminLiveTrackingPage() {
         }
 
         .admin-nav-item {
-          display: block;
+          display: flex;
+          align-items: center;
+          gap: 10px;
           width: 100%;
           text-decoration: none;
           text-align: left;
@@ -274,6 +339,17 @@ export default function AdminLiveTrackingPage() {
           border-radius: 18px;
           transition: all 0.2s ease;
           font-weight: 600;
+        }
+
+        .admin-nav-icon {
+          width: 22px;
+          display: inline-block;
+          text-align: center;
+          font-size: 1rem;
+        }
+
+        .admin-nav-label {
+          flex: 1;
         }
 
         .admin-nav-item:hover,
@@ -678,6 +754,11 @@ export default function AdminLiveTrackingPage() {
 
           .admin-nav-item {
             text-align: center;
+            justify-content: center;
+          }
+
+          .admin-nav-label {
+            flex: 0;
           }
 
           .admin-metrics,
