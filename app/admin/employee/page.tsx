@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo, useState } from "react";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview" },
@@ -17,8 +18,50 @@ const sidebarItems = [
   { label: "Report", href: "/admin/overview" },
 ];
 
-export default function AdminWasteManagementPage() {
+const metrics = [
+  { label: "Total users", value: "12,840" },
+  { label: "Active drivers", value: "184" },
+  { label: "Pickups today", value: "1,206" },
+  { label: "Verified complaints", value: "94" },
+  { label: "Monthly waste", value: "284 t" },
+];
+
+const employees = [
+  { vehicle: "WP 3456", status: "Active", id: "45490932V", collector: "Ramesh pathirana", contact: "0778967345" },
+  { vehicle: "WP 5690", status: "Active", id: "45490932V", collector: "Nadeesh sadaruwan", contact: "0776756345" },
+  { vehicle: "WP 4534", status: "Active", id: "45490932V", collector: "Nadeesh sadaruwan", contact: "0776756345" },
+  { vehicle: "WP 3998", status: "Restricted", id: "45490932V", collector: "Nadeesh sadaruwan", contact: "0776756345" },
+  { vehicle: "WP 8903", status: "Active", id: "45490932V", collector: "Nadeesh sadaruwan", contact: "0776756345" },
+];
+
+export default function AdminEmployeePage() {
   const pathname = usePathname();
+  const [query, setQuery] = useState("");
+  const [employeeRows, setEmployeeRows] = useState(employees);
+
+  const filteredEmployees = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return employeeRows;
+    }
+
+    return employeeRows.filter((employee) =>
+      [employee.vehicle, employee.status, employee.id, employee.collector, employee.contact].some((value) =>
+        value.toLowerCase().includes(normalizedQuery),
+      ),
+    );
+  }, [employeeRows, query]);
+
+  const toggleEmployeeStatus = (vehicle: string) => {
+    setEmployeeRows((rows) =>
+      rows.map((employee) =>
+        employee.vehicle === vehicle
+          ? { ...employee, status: employee.status === "Active" ? "Restricted" : "Active" }
+          : employee,
+      ),
+    );
+  };
 
   return (
     <div className="admin-root">
@@ -58,72 +101,83 @@ export default function AdminWasteManagementPage() {
           </div>
         </div>
 
-        <section className="admin-header-card waste-header">
+        <section className="admin-header-card employee-header">
           <div>
             <span className="admin-chip">SYSTEM ADMIN</span>
-            <h1>Control Center <span className="highlight">EcoCycle Lanka</span></h1>
+            <h1>
+              Control Center <span className="highlight">EcoCycle Lanka</span>
+            </h1>
             <p>Real-time operational health across all districts</p>
           </div>
         </section>
 
-        <section className="admin-metrics waste-metrics">
-          <div className="metric-card">
-            <span>Total users</span>
-            <strong>12,840</strong>
-          </div>
-          <div className="metric-card">
-            <span>Active drivers</span>
-            <strong>184</strong>
-          </div>
-          <div className="metric-card">
-            <span>Pickups today</span>
-            <strong>1,206</strong>
-          </div>
-          <div className="metric-card">
-            <span>Verified complaints</span>
-            <strong>94</strong>
-          </div>
-          <div className="metric-card">
-            <span>Monthly waste</span>
-            <strong>284 t</strong>
-          </div>
+        <section className="admin-metrics">
+          {metrics.map((metric) => (
+            <div className="metric-card" key={metric.label}>
+              <span>{metric.label}</span>
+              <strong>{metric.value}</strong>
+            </div>
+          ))}
         </section>
 
-        <section className="waste-management-card">
+        <section className="employee-card">
           <div className="card-header">
             <div>
-              <h2>Waste type management</h2>
-              <p>Review points per kg and status for each waste category.</p>
+              <h2>Employee Management</h2>
+              <p>Manage assigned vehicles, collectors, contact numbers, and access status.</p>
             </div>
-            <button className="add-button">+ Add</button>
+            <button className="add-button">+ Add Employee</button>
           </div>
 
-          <div className="waste-table">
-            <div className="waste-row waste-row--header">
-              <span>TYPE</span>
-              <span>PTS/KG</span>
+          <div className="employee-search">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search vehicle, collector, ID, contact..."
+              aria-label="Search employees"
+            />
+          </div>
+
+          <div className="employee-table">
+            <div className="employee-row employee-row--header">
+              <span>ASSIGNED VEHICLE</span>
               <span>STATUS</span>
+              <span>ID</span>
+              <span>COLLECTOR</span>
+              <span>CONTACT</span>
               <span>ACTION</span>
             </div>
-            {[
-              { type: "Organic Waste", points: "10", status: "Active", action: "Restrict" },
-              { type: "Recyclable Waste", points: "20", status: "Active", action: "Restrict" },
-              { type: "E-Waste", points: "50", status: "Active", action: "Restrict" },
-              { type: "Hazardous", points: "0", status: "Restricted", action: "Allow" },
-              { type: "Construction Debris", points: "5", status: "Active", action: "Restrict" },
-            ].map((item) => (
-              <div key={item.type} className="waste-row">
-                <span>{item.type}</span>
-                <span>{item.points}</span>
-                <span className={`status-chip ${item.status === "Active" ? "status-active" : "status-restricted"}`}>
-                  {item.status}
+
+            {filteredEmployees.map((employee) => (
+              <div className="employee-row" key={employee.vehicle}>
+                <span className="vehicle-code">{employee.vehicle}</span>
+                <span className={employee.status === "Active" ? "status-chip status-active" : "status-chip status-restricted"}>
+                  {employee.status}
+                </span>
+                <span>{employee.id}</span>
+                <span>{employee.collector}</span>
+                <span className="contact-cell">
+                  {employee.contact}
+                  <button aria-label={`Call ${employee.collector}`}>☎</button>
                 </span>
                 <span className="action-buttons">
                   <button className="action-button">Edit</button>
-                  <button className="action-button action-button--secondary">{item.action}</button>
+                  <button
+                    className={employee.status === "Active" ? "action-button action-button--danger" : "action-button action-button--secondary"}
+                    onClick={() => toggleEmployeeStatus(employee.vehicle)}
+                  >
+                    {employee.status === "Active" ? "Restrict" : "Allow"}
+                  </button>
                 </span>
               </div>
             ))}
+
+            {filteredEmployees.length === 0 && (
+              <div className="empty-state">
+                <strong>No employees found</strong>
+                <span>Try another vehicle number, ID, collector, or contact.</span>
+              </div>
+            )}
           </div>
         </section>
       </main>
@@ -206,6 +260,7 @@ export default function AdminWasteManagementPage() {
           display: flex;
           flex-direction: column;
           gap: 24px;
+          min-width: 0;
         }
 
         .admin-top {
@@ -226,6 +281,7 @@ export default function AdminWasteManagementPage() {
           padding: 14px 20px;
           box-shadow: 0 10px 24px rgba(34, 100, 59, 0.08);
           font-size: 0.95rem;
+          outline: none;
         }
 
         .admin-usercard {
@@ -274,10 +330,15 @@ export default function AdminWasteManagementPage() {
           box-shadow: 0 20px 50px rgba(23, 63, 31, 0.08);
         }
 
-        .waste-header h1 {
+        .employee-header h1 {
           margin: 14px 0 8px;
           font-size: 2.4rem;
           line-height: 1.05;
+        }
+
+        .employee-header p {
+          margin: 0;
+          color: #556b54;
         }
 
         .highlight {
@@ -296,32 +357,21 @@ export default function AdminWasteManagementPage() {
           font-size: 0.8rem;
         }
 
-        .admin-message-btn {
-          border: none;
-          border-radius: 18px;
-          padding: 14px 24px;
-          background: #1f7f37;
-          color: white;
-          font-weight: 700;
-          cursor: pointer;
-          transition: transform 0.2s ease;
-        }
-
-        .admin-message-btn:hover {
-          transform: translateY(-1px);
-        }
-
         .admin-metrics {
           display: grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 18px;
         }
 
-        .metric-card {
+        .metric-card,
+        .employee-card {
           background: white;
+          box-shadow: 0 20px 50px rgba(23, 63, 31, 0.08);
+        }
+
+        .metric-card {
           border-radius: 24px;
           padding: 24px;
-          box-shadow: 0 20px 48px rgba(23, 63, 31, 0.08);
         }
 
         .metric-card span {
@@ -336,11 +386,10 @@ export default function AdminWasteManagementPage() {
           color: #15251f;
         }
 
-        .waste-management-card {
+        .employee-card {
+          width: min(100%, 920px);
           border-radius: 32px;
           padding: 28px;
-          background: white;
-          box-shadow: 0 20px 50px rgba(23, 63, 31, 0.08);
         }
 
         .card-header {
@@ -372,37 +421,60 @@ export default function AdminWasteManagementPage() {
           cursor: pointer;
         }
 
-        .waste-table {
-          display: grid;
-          gap: 10px;
+        .employee-search {
+          margin-bottom: 16px;
         }
 
-        .waste-row {
+        .employee-search input {
+          width: 100%;
+          border: 1px solid #d9e9d9;
+          border-radius: 16px;
+          padding: 14px 16px;
+          background: #f7fbf6;
+          color: #1b3c28;
+          font-size: 0.95rem;
+          outline: none;
+        }
+
+        .employee-table {
           display: grid;
-          grid-template-columns: 2fr 1fr 1fr 2fr;
+          gap: 10px;
+          overflow-x: auto;
+        }
+
+        .employee-row {
+          display: grid;
+          grid-template-columns: 1.25fr 1fr 1.15fr 1.7fr 1.35fr 1.35fr;
           gap: 16px;
           align-items: center;
-          padding: 18px 16px;
+          min-width: 840px;
+          padding: 16px;
           border-radius: 18px;
           background: #f8fbf7;
           color: #1d3a25;
         }
 
-        .waste-row--header {
+        .employee-row--header {
           background: transparent;
-          font-size: 0.85rem;
-          font-weight: 700;
+          font-size: 0.78rem;
+          font-weight: 800;
           color: #4d6b53;
         }
 
+        .vehicle-code {
+          color: #16a34a;
+          font-weight: 800;
+        }
+
         .status-chip {
+          width: fit-content;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           border-radius: 999px;
-          padding: 8px 14px;
+          padding: 7px 12px;
           font-weight: 700;
-          font-size: 0.85rem;
+          font-size: 0.78rem;
         }
 
         .status-active {
@@ -413,6 +485,22 @@ export default function AdminWasteManagementPage() {
         .status-restricted {
           background: #fdecea;
           color: #b91c1c;
+        }
+
+        .contact-cell {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .contact-cell button {
+          width: 28px;
+          height: 28px;
+          border: 0;
+          border-radius: 50%;
+          background: #eef9f2;
+          color: #166529;
+          cursor: pointer;
         }
 
         .action-buttons {
@@ -436,6 +524,26 @@ export default function AdminWasteManagementPage() {
           background: #eef9f2;
         }
 
+        .action-button--danger {
+          background: #fdecea;
+          color: #b91c1c;
+        }
+
+        .empty-state {
+          min-width: 840px;
+          display: grid;
+          gap: 6px;
+          padding: 20px;
+          border-radius: 18px;
+          background: #f8fbf7;
+          color: #1d3a25;
+        }
+
+        .empty-state span {
+          color: #6b7280;
+          font-size: 0.85rem;
+        }
+
         @media (max-width: 1080px) {
           .admin-metrics {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -444,6 +552,10 @@ export default function AdminWasteManagementPage() {
           .admin-top {
             flex-direction: column;
             align-items: stretch;
+          }
+
+          .employee-card {
+            width: 100%;
           }
         }
 
@@ -468,13 +580,10 @@ export default function AdminWasteManagementPage() {
             grid-template-columns: 1fr;
           }
 
-          .waste-row {
-            grid-template-columns: 1fr;
-            text-align: left;
-          }
-
-          .action-buttons {
-            justify-content: flex-start;
+          .admin-header-card,
+          .card-header {
+            align-items: stretch;
+            flex-direction: column;
           }
         }
       `}</style>

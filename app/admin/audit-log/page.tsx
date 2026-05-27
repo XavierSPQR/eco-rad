@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo, useState } from "react";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview" },
@@ -17,8 +18,42 @@ const sidebarItems = [
   { label: "Report", href: "/admin/overview" },
 ];
 
-export default function AdminWasteManagementPage() {
+const metrics = [
+  { label: "Total users", value: "12,840" },
+  { label: "Active drivers", value: "184" },
+  { label: "Pickups today", value: "1,206" },
+  { label: "Verified complaints", value: "94" },
+  { label: "Monthly waste", value: "284 t" },
+];
+
+const auditLogs = [
+  { action: "Admin updated reward tier", meta: "admin@ecocycle.lk · 10:42" },
+  { action: "Driver Kasun signed in", meta: "kasun.s · 06:01" },
+  { action: "Complaint #C-3128 resolved", meta: "sanjeewa.f · Yesterday" },
+  { action: "Complaint #C-3128 resolved", meta: "sanjeewa.f · Yesterday" },
+  { action: "Complaint #C-3128 resolved", meta: "sanjeewa.f · Yesterday" },
+  { action: "Complaint #C-3128 resolved", meta: "sanjeewa.f · Yesterday" },
+  { action: "Complaint #C-3128 resolved", meta: "sanjeewa.f · Yesterday" },
+  { action: "Complaint #C-3128 resolved", meta: "sanjeewa.f · Yesterday" },
+];
+
+export default function AdminAuditLogPage() {
   const pathname = usePathname();
+  const [query, setQuery] = useState("");
+  const [selectedLog, setSelectedLog] = useState(auditLogs[0]);
+  const [downloaded, setDownloaded] = useState(false);
+
+  const filteredLogs = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return auditLogs;
+    }
+
+    return auditLogs.filter((log) =>
+      [log.action, log.meta].some((value) => value.toLowerCase().includes(normalizedQuery)),
+    );
+  }, [query]);
 
   return (
     <div className="admin-root">
@@ -58,72 +93,75 @@ export default function AdminWasteManagementPage() {
           </div>
         </div>
 
-        <section className="admin-header-card waste-header">
+        <section className="admin-header-card audit-header">
           <div>
             <span className="admin-chip">SYSTEM ADMIN</span>
-            <h1>Control Center <span className="highlight">EcoCycle Lanka</span></h1>
+            <h1>
+              Control Center <span className="highlight">EcoCycle Lanka</span>
+            </h1>
             <p>Real-time operational health across all districts</p>
           </div>
         </section>
 
-        <section className="admin-metrics waste-metrics">
-          <div className="metric-card">
-            <span>Total users</span>
-            <strong>12,840</strong>
-          </div>
-          <div className="metric-card">
-            <span>Active drivers</span>
-            <strong>184</strong>
-          </div>
-          <div className="metric-card">
-            <span>Pickups today</span>
-            <strong>1,206</strong>
-          </div>
-          <div className="metric-card">
-            <span>Verified complaints</span>
-            <strong>94</strong>
-          </div>
-          <div className="metric-card">
-            <span>Monthly waste</span>
-            <strong>284 t</strong>
-          </div>
+        <section className="admin-metrics">
+          {metrics.map((metric) => (
+            <div className="metric-card" key={metric.label}>
+              <span>{metric.label}</span>
+              <strong>{metric.value}</strong>
+            </div>
+          ))}
         </section>
 
-        <section className="waste-management-card">
+        <section className="audit-card">
           <div className="card-header">
             <div>
-              <h2>Waste type management</h2>
-              <p>Review points per kg and status for each waste category.</p>
+              <h2>Auditlog</h2>
+              <p>Review recent admin, driver, and complaint activity.</p>
             </div>
-            <button className="add-button">+ Add</button>
+            <button className={downloaded ? "download-button downloaded" : "download-button"} onClick={() => setDownloaded(true)}>
+              {downloaded ? "Downloaded" : "Download"}
+            </button>
           </div>
 
-          <div className="waste-table">
-            <div className="waste-row waste-row--header">
-              <span>TYPE</span>
-              <span>PTS/KG</span>
-              <span>STATUS</span>
-              <span>ACTION</span>
+          <div className="audit-search">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search audit activity..."
+              aria-label="Search audit activity"
+            />
+          </div>
+
+          <div className="audit-layout">
+            <div className="audit-list">
+              {filteredLogs.map((log, index) => (
+                <button
+                  className={selectedLog.action === log.action && selectedLog.meta === log.meta ? "audit-row selected" : "audit-row"}
+                  key={`${log.action}-${log.meta}-${index}`}
+                  onClick={() => setSelectedLog(log)}
+                  type="button"
+                >
+                  <span>
+                    <strong>{log.action}</strong>
+                    <small>{log.meta}</small>
+                  </span>
+                </button>
+              ))}
+
+              {filteredLogs.length === 0 && (
+                <div className="empty-state">
+                  <strong>No audit entries found</strong>
+                  <span>Try searching another user, complaint, or action.</span>
+                </div>
+              )}
             </div>
-            {[
-              { type: "Organic Waste", points: "10", status: "Active", action: "Restrict" },
-              { type: "Recyclable Waste", points: "20", status: "Active", action: "Restrict" },
-              { type: "E-Waste", points: "50", status: "Active", action: "Restrict" },
-              { type: "Hazardous", points: "0", status: "Restricted", action: "Allow" },
-              { type: "Construction Debris", points: "5", status: "Active", action: "Restrict" },
-            ].map((item) => (
-              <div key={item.type} className="waste-row">
-                <span>{item.type}</span>
-                <span>{item.points}</span>
-                <span className={`status-chip ${item.status === "Active" ? "status-active" : "status-restricted"}`}>
-                  {item.status}
-                </span>
-                <span className="action-buttons">
-                  <button className="action-button">Edit</button>
-                  <button className="action-button action-button--secondary">{item.action}</button>
-                </span>
-              </div>
-            ))}
+
+            <aside className="audit-detail">
+              <span className="detail-chip">Selected log</span>
+              <strong>{selectedLog.action}</strong>
+              <p>{selectedLog.meta}</p>
+              <button className="review-button">Review entry</button>
+            </aside>
           </div>
         </section>
       </main>
@@ -206,6 +244,7 @@ export default function AdminWasteManagementPage() {
           display: flex;
           flex-direction: column;
           gap: 24px;
+          min-width: 0;
         }
 
         .admin-top {
@@ -226,6 +265,7 @@ export default function AdminWasteManagementPage() {
           padding: 14px 20px;
           box-shadow: 0 10px 24px rgba(34, 100, 59, 0.08);
           font-size: 0.95rem;
+          outline: none;
         }
 
         .admin-usercard {
@@ -274,10 +314,15 @@ export default function AdminWasteManagementPage() {
           box-shadow: 0 20px 50px rgba(23, 63, 31, 0.08);
         }
 
-        .waste-header h1 {
+        .audit-header h1 {
           margin: 14px 0 8px;
           font-size: 2.4rem;
           line-height: 1.05;
+        }
+
+        .audit-header p {
+          margin: 0;
+          color: #556b54;
         }
 
         .highlight {
@@ -296,32 +341,21 @@ export default function AdminWasteManagementPage() {
           font-size: 0.8rem;
         }
 
-        .admin-message-btn {
-          border: none;
-          border-radius: 18px;
-          padding: 14px 24px;
-          background: #1f7f37;
-          color: white;
-          font-weight: 700;
-          cursor: pointer;
-          transition: transform 0.2s ease;
-        }
-
-        .admin-message-btn:hover {
-          transform: translateY(-1px);
-        }
-
         .admin-metrics {
           display: grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 18px;
         }
 
-        .metric-card {
+        .metric-card,
+        .audit-card {
           background: white;
+          box-shadow: 0 20px 50px rgba(23, 63, 31, 0.08);
+        }
+
+        .metric-card {
           border-radius: 24px;
           padding: 24px;
-          box-shadow: 0 20px 48px rgba(23, 63, 31, 0.08);
         }
 
         .metric-card span {
@@ -336,11 +370,9 @@ export default function AdminWasteManagementPage() {
           color: #15251f;
         }
 
-        .waste-management-card {
+        .audit-card {
           border-radius: 32px;
           padding: 28px;
-          background: white;
-          box-shadow: 0 20px 50px rgba(23, 63, 31, 0.08);
         }
 
         .card-header {
@@ -362,82 +394,142 @@ export default function AdminWasteManagementPage() {
           color: #556b54;
         }
 
-        .add-button {
+        .download-button,
+        .review-button {
           border: none;
+          border-radius: 999px;
+          padding: 13px 20px;
+          background: #1f9d55;
+          color: white;
+          font-weight: 800;
+          cursor: pointer;
+          box-shadow: 0 12px 28px rgba(31, 157, 85, 0.22);
+        }
+
+        .download-button::before {
+          content: "↓";
+          margin-right: 8px;
+        }
+
+        .download-button.downloaded {
+          background: #166529;
+        }
+
+        .audit-search {
+          margin-bottom: 18px;
+        }
+
+        .audit-search input {
+          width: 100%;
+          border: 1px solid #d9e9d9;
           border-radius: 16px;
-          padding: 14px 20px;
-          background: #eef9f2;
-          color: #166529;
-          font-weight: 700;
+          padding: 14px 16px;
+          background: #f7fbf6;
+          color: #1b3c28;
+          font-size: 0.95rem;
+          outline: none;
+        }
+
+        .audit-layout {
+          display: grid;
+          grid-template-columns: 2fr 1fr;
+          gap: 24px;
+          align-items: start;
+        }
+
+        .audit-list {
+          display: grid;
+          overflow: hidden;
+          border-radius: 18px;
+          border: 1px solid #e8efe5;
+        }
+
+        .audit-row {
+          width: 100%;
+          min-height: 54px;
+          border: 0;
+          border-bottom: 1px solid #e8efe5;
+          padding: 12px 16px;
+          background: white;
+          color: #1d3a25;
+          text-align: left;
           cursor: pointer;
         }
 
-        .waste-table {
-          display: grid;
-          gap: 10px;
+        .audit-row:last-child {
+          border-bottom: 0;
         }
 
-        .waste-row {
-          display: grid;
-          grid-template-columns: 2fr 1fr 1fr 2fr;
-          gap: 16px;
-          align-items: center;
-          padding: 18px 16px;
-          border-radius: 18px;
+        .audit-row:hover,
+        .audit-row.selected {
           background: #f8fbf7;
+        }
+
+        .audit-row strong,
+        .audit-row small {
+          display: block;
+        }
+
+        .audit-row strong {
+          font-size: 0.95rem;
+        }
+
+        .audit-row small {
+          margin-top: 4px;
+          color: #6b7280;
+          font-size: 0.78rem;
+        }
+
+        .audit-detail {
+          display: grid;
+          gap: 14px;
+          padding: 22px;
+          border-radius: 22px;
+          background: #f8fbf7;
+        }
+
+        .detail-chip {
+          width: fit-content;
+          padding: 7px 12px;
+          border-radius: 999px;
+          background: #ecf8ef;
+          color: #166529;
+          font-size: 0.8rem;
+          font-weight: 800;
+        }
+
+        .audit-detail strong {
+          font-size: 1.1rem;
+        }
+
+        .audit-detail p {
+          margin: 0;
+          color: #556b54;
+        }
+
+        .review-button {
+          width: 100%;
+          margin-top: 8px;
+          background: #eef9f2;
+          color: #166529;
+          box-shadow: none;
+        }
+
+        .empty-state {
+          display: grid;
+          gap: 6px;
+          padding: 20px;
           color: #1d3a25;
         }
 
-        .waste-row--header {
-          background: transparent;
+        .empty-state span {
+          color: #6b7280;
           font-size: 0.85rem;
-          font-weight: 700;
-          color: #4d6b53;
-        }
-
-        .status-chip {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 999px;
-          padding: 8px 14px;
-          font-weight: 700;
-          font-size: 0.85rem;
-        }
-
-        .status-active {
-          background: #ecf8ef;
-          color: #166529;
-        }
-
-        .status-restricted {
-          background: #fdecea;
-          color: #b91c1c;
-        }
-
-        .action-buttons {
-          display: flex;
-          gap: 10px;
-          justify-content: flex-end;
-        }
-
-        .action-button {
-          border: none;
-          border-radius: 999px;
-          padding: 10px 18px;
-          background: #ffffff;
-          color: #1f7f37;
-          box-shadow: 0 10px 24px rgba(23, 63, 31, 0.08);
-          cursor: pointer;
-          font-weight: 700;
-        }
-
-        .action-button--secondary {
-          background: #eef9f2;
         }
 
         @media (max-width: 1080px) {
-          .admin-metrics {
+          .admin-metrics,
+          .audit-layout {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
@@ -464,17 +556,15 @@ export default function AdminWasteManagementPage() {
             text-align: center;
           }
 
-          .admin-metrics {
+          .admin-metrics,
+          .audit-layout {
             grid-template-columns: 1fr;
           }
 
-          .waste-row {
-            grid-template-columns: 1fr;
-            text-align: left;
-          }
-
-          .action-buttons {
-            justify-content: flex-start;
+          .admin-header-card,
+          .card-header {
+            align-items: stretch;
+            flex-direction: column;
           }
         }
       `}</style>
