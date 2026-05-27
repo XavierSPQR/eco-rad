@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview" },
@@ -18,15 +19,49 @@ const sidebarItems = [
 ];
 
 const users = [
-  { name: "Anushka Jayawardena", role: "Resident", district: "Colombo", points: "4,820", status: "Active" },
-  { name: "Nimal Perera", role: "Driver", district: "Kandy", points: "2,450", status: "Active" },
-  { name: "Tharindu Bandara", role: "Resident", district: "Galle", points: "2,380", status: "Active" },
-  { name: "Dilani Senanayake", role: "Collector", district: "Jaffna", points: "2,110", status: "Active" },
-  { name: "Ruwan Madushanka", role: "Resident", district: "Matara", points: "1,990", status: "Restricted" },
+  { name: "Anushka Jayawardena", role: "Resident", email: "anushka@ecocycle.lk", phone: "+94-771-234567", address: "123 Green St", district: "Colombo", points: "4,820" },
+  { name: "Nimal Perera", role: "Driver", email: "nimal@ecocycle.lk", phone: "+94-771-234568", address: "456 River Ave", district: "Kandy", points: "2,450" },
+  { name: "Tharindu Bandara", role: "Resident", email: "tharindu@ecocycle.lk", phone: "+94-771-234569", address: "789 Beach Rd", district: "Galle", points: "2,380" },
+  { name: "Dilani Senanayake", role: "Collector", email: "dilani@ecocycle.lk", phone: "+94-771-234570", address: "321 Park Lane", district: "Jaffna", points: "2,110" },
+  { name: "Ruwan Madushanka", role: "Resident", email: "ruwan@ecocycle.lk", phone: "+94-771-234571", address: "654 Hill Road", district: "Matara", points: "1,990" },
 ];
 
 export default function AdminUsersPage() {
   const pathname = usePathname();
+  const [userList, setUserList] = useState(users);
+  const [formData, setFormData] = useState({ name: "", role: "Resident", email: "", phone: "", address: "", district: "", points: "" });
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+
+  const handleAddClick = () => {
+    setEditingIndex(null);
+    setFormData({ name: "", role: "Resident", email: "", phone: "", address: "", district: "", points: "" });
+    setIsFormOpen(true);
+  };
+
+  const handleEditClick = (index: number) => {
+    setEditingIndex(index);
+    setFormData(userList[index]);
+    setIsFormOpen(true);
+  };
+
+  const handleSaveUser = () => {
+    if (!formData.name.trim()) return;
+
+    if (editingIndex !== null) {
+      const updated = [...userList];
+      updated[editingIndex] = { ...formData };
+      setUserList(updated);
+    } else {
+      setUserList([{ ...formData }, ...userList]);
+    }
+
+    setIsFormOpen(false);
+  };
+
+  const handleCancel = () => {
+    setIsFormOpen(false);
+  };
 
   return (
     <div className="admin-root">
@@ -102,37 +137,111 @@ export default function AdminUsersPage() {
         <section className="users-card">
           <div className="card-header">
             <div>
-              <h2>User management</h2>
-              <p>Monitor active accounts and take quick administrative actions.</p>
+              <h2>User Management</h2>
+              <p>Monitor and manage all user accounts and take administrative actions.</p>
             </div>
-            <button className="add-button">+ Add User</button>
+            <button className="add-button" onClick={handleAddClick}>+ Add User</button>
           </div>
+
+          {isFormOpen && (
+            <div className="user-form-card">
+              <div className="form-row">
+                <label>Full Name</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Enter full name"
+                />
+              </div>
+              <div className="form-row">
+                <label>Role</label>
+                <select
+                  value={formData.role}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                >
+                  <option value="Resident">Resident</option>
+                  <option value="Driver">Driver</option>
+                  <option value="Collector">Collector</option>
+                </select>
+              </div>
+              <div className="form-row">
+                <label>Email</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="user@ecocycle.lk"
+                />
+              </div>
+              <div className="form-row">
+                <label>Phone</label>
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="+94-77X-XXXXXX"
+                />
+              </div>
+              <div className="form-row">
+                <label>Address</label>
+                <input
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  placeholder="Street address"
+                />
+              </div>
+              <div className="form-row">
+                <label>District</label>
+                <input
+                  type="text"
+                  value={formData.district}
+                  onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                  placeholder="Enter district"
+                />
+              </div>
+              <div className="form-row">
+                <label>Points</label>
+                <input
+                  type="text"
+                  value={formData.points}
+                  onChange={(e) => setFormData({ ...formData, points: e.target.value })}
+                  placeholder="e.g. 4,820"
+                />
+              </div>
+              <div className="form-actions">
+                <button className="action-button" onClick={handleSaveUser}>{editingIndex !== null ? "Save Changes" : "Add User"}</button>
+                <button className="action-button action-button--secondary" onClick={handleCancel}>Cancel</button>
+              </div>
+            </div>
+          )}
 
           <div className="users-table">
             <div className="users-row users-row--header">
-              <span>USER</span>
+              <span>FULL NAME</span>
               <span>ROLE</span>
+              <span>EMAIL</span>
+              <span>PHONE</span>
+              <span>ADDRESS</span>
               <span>DISTRICT</span>
               <span>POINTS</span>
               <span>ACTION</span>
             </div>
 
-            {users.map((user) => (
-              <div className="users-row" key={user.name}>
+            {userList.map((user, index) => (
+              <div className="users-row" key={`${user.name}-${index}`}>
                 <span>
                   <strong>{user.name}</strong>
-                  <small className={user.status === "Active" ? "status-text status-text--active" : "status-text status-text--restricted"}>
-                    {user.status}
-                  </small>
                 </span>
                 <span>{user.role}</span>
+                <span>{user.email}</span>
+                <span>{user.phone}</span>
+                <span>{user.address}</span>
                 <span>{user.district}</span>
                 <span>{user.points}</span>
                 <span className="action-buttons">
-                  <button className="action-button">Edit</button>
-                  <button className={user.status === "Active" ? "action-button action-button--danger" : "action-button action-button--secondary"}>
-                    {user.status === "Active" ? "Restrict" : "Allow"}
-                  </button>
+                  <button className="action-button" onClick={() => handleEditClick(index)}>Edit</button>
                 </span>
               </div>
             ))}
@@ -375,6 +484,45 @@ export default function AdminUsersPage() {
           cursor: pointer;
         }
 
+        .user-form-card {
+          display: grid;
+          gap: 16px;
+          padding: 22px;
+          margin-bottom: 22px;
+          border-radius: 24px;
+          background: #f5fbf4;
+          box-shadow: 0 20px 40px rgba(23, 63, 31, 0.08);
+        }
+
+        .form-row {
+          display: grid;
+          gap: 8px;
+        }
+
+        .form-row label {
+          font-size: 0.9rem;
+          color: #42503f;
+          font-weight: 700;
+        }
+
+        .form-row input,
+        .form-row select {
+          width: 100%;
+          border: 1px solid #d6e7d5;
+          border-radius: 16px;
+          padding: 12px 16px;
+          background: white;
+          color: #1f3826;
+          font-size: 0.95rem;
+        }
+
+        .form-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+          flex-wrap: wrap;
+        }
+
         .users-table {
           display: grid;
           gap: 10px;
@@ -382,7 +530,7 @@ export default function AdminUsersPage() {
 
         .users-row {
           display: grid;
-          grid-template-columns: 2fr 1fr 1.2fr 1fr 2fr;
+          grid-template-columns: 1.5fr 1fr 1.5fr 1.2fr 1.8fr 1.2fr 1fr 1.2fr;
           gap: 16px;
           align-items: center;
           padding: 18px 16px;
@@ -401,20 +549,6 @@ export default function AdminUsersPage() {
         .users-row strong,
         .users-row small {
           display: block;
-        }
-
-        .status-text {
-          margin-top: 5px;
-          font-size: 0.78rem;
-          font-weight: 700;
-        }
-
-        .status-text--active {
-          color: #166529;
-        }
-
-        .status-text--restricted {
-          color: #b91c1c;
         }
 
         .action-buttons {
