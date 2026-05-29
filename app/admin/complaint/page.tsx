@@ -13,7 +13,7 @@ const sidebarItems = [
   { label: "Complaint", href: "/admin/complaint", icon: "🗣️" },
   { label: "Vehicle", href: "/admin/vehicle", icon: "🚚" },
   { label: "Schedule", href: "/admin/overview", icon: "🗓️" },
-  { label: "Report", href: "/admin/overview", icon: "📝" },
+  { label: "Report", href: "/admin/report", icon: "📝" },
 ];
 
 type ComplaintPriority = "High" | "Medium" | "Low";
@@ -189,11 +189,11 @@ export default function AdminComplaintPage() {
             <div className="complaints-row complaints-row--header">
               <span>Name</span>
               <span>NIC</span>
-              <span>subject</span>
-              <span>description</span>
-              <span>location</span>
-              <span>status(high,medium,low)</span>
-              <span>action(in-review[default],resolved)</span>
+              <span>Subject</span>
+              <span>Description</span>
+              <span>Location</span>
+              <span>Status</span>
+              <span>Action</span>
             </div>
 
             {filteredComplaints.map((c) => (

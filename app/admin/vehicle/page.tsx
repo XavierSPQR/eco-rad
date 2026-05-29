@@ -13,7 +13,7 @@ const sidebarItems = [
   { label: "Complaint", href: "/admin/complaint", icon: "🗣️" },
   { label: "Vehicle", href: "/admin/vehicle", icon: "🚚" },
   { label: "Schedule", href: "/admin/overview", icon: "🗓️" },
-  { label: "Report", href: "/admin/overview", icon: "📝" },
+  { label: "Report", href: "/admin/report", icon: "📝" },
 ];
 
 const metrics = [
