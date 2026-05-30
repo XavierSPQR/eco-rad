@@ -16,13 +16,7 @@ const sidebarItems = [
   { label: "Report", href: "/admin/report", icon: "📝" },
 ];
 
-const metrics = [
-  { label: "Total users", value: "12,840" },
-  { label: "Active drivers", value: "184" },
-  { label: "Pickups today", value: "1,206" },
-  { label: "Verified complaints", value: "94" },
-  { label: "Monthly waste", value: "284 t" },
-];
+// metrics removed per admin UI simplification
 
 const notifications = [
   {
@@ -31,6 +25,7 @@ const notifications = [
     message: "LK-4521 is approaching Colombo South zone B",
     time: "2m ago",
     type: "truck",
+    source: "driver",
     unread: true,
   },
   {
@@ -39,6 +34,7 @@ const notifications = [
     message: "15 Lanes Cleared",
     time: "1h ago",
     type: "done",
+    source: "collector",
     unread: true,
   },
   {
@@ -47,6 +43,7 @@ const notifications = [
     message: "Overflowing bin - Borella reported by you",
     time: "2d ago",
     type: "alert",
+    source: "resident",
     unread: false,
   },
   {
@@ -55,6 +52,7 @@ const notifications = [
     message: "LK-4521 is approaching Nugegoda zone B",
     time: "2m ago",
     type: "truck",
+    source: "driver",
     unread: false,
   },
   {
@@ -63,11 +61,12 @@ const notifications = [
     message: "12 Lanes cleared Colombo South",
     time: "1h ago",
     type: "done",
+    source: "collector",
     unread: false,
   },
 ];
 
-function NotificationIcon({ type }: { type: string }) {
+function NotificationIcon({ type }: { readonly type: string }) {
   if (type === "done") {
     return <span aria-hidden="true">✓</span>;
   }
@@ -81,26 +80,14 @@ function NotificationIcon({ type }: { type: string }) {
 
 export default function AdminNotificationPage() {
   const pathname = usePathname();
-  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "driver" | "collector" | "resident">("all");
   const [selectedId, setSelectedId] = useState(notifications[0].id);
   const [readIds, setReadIds] = useState<number[]>([]);
 
   const filteredNotifications = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return notifications;
-    }
-
-    return notifications.filter((notification) =>
-      [notification.title, notification.message, notification.time].some((value) =>
-        value.toLowerCase().includes(normalizedQuery),
-      ),
-    );
-  }, [query]);
-
-  const selectedNotification =
-    notifications.find((notification) => notification.id === selectedId) ?? notifications[0];
+    if (filter === "all") return notifications;
+    return notifications.filter((n) => n.source === filter);
+  }, [filter]);
 
   const handleSelectNotification = (id: number) => {
     setSelectedId(id);
@@ -196,9 +183,7 @@ export default function AdminNotificationPage() {
 
       <main className="admin-main">
         <div className="admin-top">
-          <div className="admin-search">
-            <input placeholder="Search collections, complaints, trucks..." />
-          </div>
+          <div />
           <div className="admin-usercard">
             <div className="admin-avatar">AU</div>
             <div>
@@ -218,14 +203,7 @@ export default function AdminNotificationPage() {
           </div>
         </section>
 
-        <section className="admin-metrics">
-          {metrics.map((metric) => (
-            <div className="metric-card" key={metric.label}>
-              <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
-            </div>
-          ))}
-        </section>
+        {/* metrics removed per request */}
 
         <section className="notification-grid">
           <article className="notifications-card">
@@ -239,13 +217,21 @@ export default function AdminNotificationPage() {
               </button>
             </div>
 
-            <div className="notification-search">
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search notifications..."
-                aria-label="Search notifications"
-              />
+            <div className="notification-filters">
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="mark-button" onClick={() => setFilter("all")} type="button">
+                  All
+                </button>
+                <button className="mark-button" onClick={() => setFilter("driver")} type="button">
+                  Drivers
+                </button>
+                <button className="mark-button" onClick={() => setFilter("collector")} type="button">
+                  Collectors
+                </button>
+                <button className="mark-button" onClick={() => setFilter("resident")} type="button">
+                  Residents
+                </button>
+              </div>
             </div>
 
             <div className="notification-list">
@@ -283,29 +269,7 @@ export default function AdminNotificationPage() {
             </div>
           </article>
 
-          <article className="notification-detail">
-            <div className="card-header">
-              <div>
-                <h2>Alert detail</h2>
-                <p>Selected notification preview.</p>
-              </div>
-            </div>
-
-            <div className="detail-body">
-              <span className="detail-icon">
-                <NotificationIcon type={selectedNotification.type} />
-              </span>
-              <strong>{selectedNotification.title}</strong>
-              <p>{selectedNotification.message}</p>
-              <div className="detail-meta">
-                <span>Received</span>
-                <b>{selectedNotification.time}</b>
-              </div>
-              <button className="detail-button" onClick={() => handleSelectNotification(selectedNotification.id)}>
-                Mark as reviewed
-              </button>
-            </div>
-          </article>
+          {/* detail panel removed per request */}
         </section>
       </main>
 
@@ -497,11 +461,7 @@ export default function AdminNotificationPage() {
           font-size: 0.8rem;
         }
 
-        .admin-metrics {
-          display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 18px;
-        }
+        /* metrics removed */
 
         .metric-card,
         .notifications-card,
@@ -529,7 +489,7 @@ export default function AdminNotificationPage() {
 
         .notification-grid {
           display: grid;
-          grid-template-columns: 2fr 1fr;
+          grid-template-columns: 1fr;
           gap: 24px;
         }
 
