@@ -32,14 +32,21 @@ type VehicleAssignmentRow = {
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
-  { label: "Live Tracking", href: "/admin/live-traking", icon: "📍" },
+  { label: "Live Tracking", href: "/admin/live-tracking", icon: "📍" },
   { label: "Notification", href: "/admin/notification", icon: "🔔" },
-  { label: "Resident", href: "/admin/users", icon: "👥" },
-  { label: "Employee", href: "/admin/employee", icon: "🧑‍💼" },
-  { label: "Complaint", href: "/admin/complaint", icon: "🗣️" },
-  { label: "Vehicle", href: "/admin/vehicle", icon: "🚚" },
-  { label: "Schedule", href: "/admin/overview", icon: "🗓️" },
-  { label: "Report", href: "/admin/report", icon: "📝" },
+  { divider: true, componentKey: "sep-top" },
+  { label: "Residents", href: "/admin/users", icon: "👥" },
+  { label: "Employees", href: "/admin/employee", icon: "👨‍💼" },
+  { label: "Vehicles", href: "/admin/vehicle", icon: "🚗" },
+  { divider: true, componentKey: "sep-people" },
+  { label: "Reward Management", href: "/admin/reward-management", icon: "🎁" },
+  { label: "Reward Store Management", href: "/admin/reward-store-management", icon: "🏪" },
+  { label: "Reward Redeem Management", href: "/admin/reward-redeem-management", icon: "🎟️" },
+  { divider: true, componentKey: "sep-reward" },
+  { label: "Complaints", href: "/admin/complaint", icon: "💬" },
+  { label: "Schedules", href: "/admin/schedules", icon: "📅" },
+  { divider: true, componentKey: "sep-meta" },
+  { label: "Reports", href: "/admin/report", icon: "📈" },
 ];
 
 const allWasteTypes: WasteType[] = [
@@ -264,19 +271,23 @@ export default function AdminReportPage() {
           </div>
         </div>
 
-        <nav className="admin-nav">
-          {sidebarItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={pathname === item.href ? "admin-nav-item active" : "admin-nav-item"}
-            >
-              <span className="admin-nav-icon" aria-hidden="true">
-                {item.icon}
-              </span>
-              <span className="admin-nav-label">{item.label}</span>
-            </Link>
-          ))}
+                        <nav className="admin-nav">
+          {sidebarItems.map((item) =>
+            "divider" in item ? (
+              <div key={item.componentKey} className="admin-nav-separator" />
+            ) : (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={pathname === item.href ? "admin-nav-item active" : "admin-nav-item"}
+              >
+                <span className="admin-nav-icon" aria-hidden="true">
+                  {item.icon}
+                </span>
+                <span className="admin-nav-label">{item.label}</span>
+              </Link>
+            ),
+          )}
         </nav>
       </aside>
 
@@ -554,6 +565,13 @@ export default function AdminReportPage() {
         .admin-nav-item.active {
           background: #e6f4e8;
           color: #166529;
+        }
+
+        .admin-nav-separator {
+          height: 1px;
+          border-radius: 999px;
+          background: rgba(22, 101, 31, 0.08);
+          margin: 10px 0;
         }
 
         .admin-main {
