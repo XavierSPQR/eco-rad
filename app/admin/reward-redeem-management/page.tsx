@@ -97,12 +97,16 @@ export default function AdminRewardRedeemManagementPage() {
 
 
   const setCompleted = (id: string) => {
-    const next = records.map((record) => (record.id === id ? { ...record, action: "completed" } : record));
+    const next = records.map((record) =>
+      record.id === id ? { ...record, action: "completed" as const } : record
+    );
     persist(next);
   };
 
   const setPending = (id: string) => {
-    const next = records.map((record) => (record.id === id ? { ...record, action: "pending" } : record));
+    const next = records.map((record) =>
+      record.id === id ? { ...record, action: "pending" as const } : record
+    );
     persist(next);
   };
 

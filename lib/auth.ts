@@ -31,6 +31,7 @@ export async function signUpResident(
   const { user } = await createUserWithEmailAndPassword(auth, email, password);
 
   await setDoc(doc(db, "users", user.uid), {
+    ...profile,
     uid: user.uid,
     email,
     role: "resident",
@@ -38,7 +39,6 @@ export async function signUpResident(
     residences: 0,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-    ...profile,
   });
 
   return user;
