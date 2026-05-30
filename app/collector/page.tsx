@@ -15,7 +15,6 @@ export default function CollectorDashboard() {
           <Link href="#" className={styles.navItem}>Dashboard</Link>
           <Link href="#" className={styles.navItem}>Tasks</Link>
           <Link href="#" className={styles.navItem}>Notifications</Link>
-          <Link href="#" className={styles.navItem}>Rewards</Link>
           <Link href="#" className={styles.navItem}>Profile</Link>
         </nav>
       </aside>
