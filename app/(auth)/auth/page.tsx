@@ -28,6 +28,14 @@ const IconUser = () => (
   </svg>
 );
 
+const IconIdCard = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="9" cy="10" r="2" />
+    <path d="M15 8h2M15 12h2M7 16h10" />
+  </svg>
+);
+
 const IconMapPin = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
@@ -137,6 +145,7 @@ function friendlyError(code: string): string {
     "auth/invalid-credential": "Incorrect email or password.",
     "auth/too-many-requests": "Too many attempts. Please wait a moment.",
     "auth/network-request-failed": "Network error. Check your connection.",
+    "permission-denied": "Permission denied. Please contact support.",
   };
   return map[code] ?? "Something went wrong. Please try again.";
 }
@@ -156,6 +165,8 @@ export default function AuthPage() {
 
   // ── Signup state ──
   const [signupName, setSignupName] = useState("");
+  const [signupNic, setSignupNic] = useState("");
+  const [signupDistrict, setSignupDistrict] = useState("");
   const [signupAddress, setSignupAddress] = useState("");
   const [signupPhone, setSignupPhone] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
@@ -195,7 +206,13 @@ export default function AuthPage() {
   }
 
   async function handleSignUp() {
-    if (!signupName.trim() || !signupEmail.trim() || !signupPassword) {
+    if (
+      !signupName.trim() ||
+      !signupNic.trim() ||
+      !signupDistrict.trim() ||
+      !signupEmail.trim() ||
+      !signupPassword
+    ) {
       setError("Please fill in all required fields.");
       return;
     }
@@ -214,8 +231,8 @@ export default function AuthPage() {
         fullName: signupName.trim(),
         phone: signupPhone.trim(),
         address: signupAddress.trim(),
-        district: "",
-        nic: "",
+        district: signupDistrict.trim(),
+        nic: signupNic.trim(),
         email: signupEmail.trim(),
       });
       router.push("/resident");
@@ -394,6 +411,32 @@ export default function AuthPage() {
                 placeholder="Full name"
                 value={signupName}
                 onChange={(e) => setSignupName(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            {/* NIC */}
+            <div className="auth-field">
+              <span className="auth-field-icon"><IconIdCard /></span>
+              <input
+                className="auth-input"
+                type="text"
+                placeholder="NIC number (e.g. 900000000V)"
+                value={signupNic}
+                onChange={(e) => setSignupNic(e.target.value.toUpperCase())}
+                disabled={loading}
+              />
+            </div>
+
+            {/* District */}
+            <div className="auth-field">
+              <span className="auth-field-icon"><IconMapPin /></span>
+              <input
+                className="auth-input"
+                type="text"
+                placeholder="District (e.g. Colombo)"
+                value={signupDistrict}
+                onChange={(e) => setSignupDistrict(e.target.value)}
                 disabled={loading}
               />
             </div>

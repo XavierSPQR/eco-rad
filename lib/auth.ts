@@ -32,13 +32,13 @@ export async function signUpResident(
 
   await setDoc(doc(db, "users", user.uid), {
     uid: user.uid,
-    email,
     role: "resident",
     points: 0,
     residences: 0,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     ...profile,
+    email, // Ensure email from auth is used if not in profile, but it's already in profile
   });
 
   return user;
