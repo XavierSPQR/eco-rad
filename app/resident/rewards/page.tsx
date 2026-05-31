@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import styles from "./page.module.css";
+import { useAuth } from "@/context/AuthContext";
 
 const BADGES = [
   {
@@ -127,6 +128,7 @@ function OfferCard({
 }
 
 export default function ResidentRewardsPage() {
+  const { profile } = useAuth();
   const [availablePoints, setAvailablePoints] = useState(450);
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
@@ -135,6 +137,12 @@ export default function ResidentRewardsPage() {
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
   const [redeemName, setRedeemName] = useState("");
   const [redeemNic, setRedeemNic] = useState("");
+
+  useEffect(() => {
+    if (profile) {
+      setAvailablePoints(profile.points || 0);
+    }
+  }, [profile]);
 
   useEffect(() => {
     try {
@@ -161,8 +169,8 @@ export default function ResidentRewardsPage() {
   const handleRedeem = (offer: (typeof OFFERS)[number] & { image?: string }) => {
     if (!offer.active) return;
     setSelectedOffer(offer);
-    setRedeemName("");
-    setRedeemNic("");
+    setRedeemName(profile?.fullName || "");
+    setRedeemNic(profile?.nic || "");
     setModalOpen(true);
   };
 

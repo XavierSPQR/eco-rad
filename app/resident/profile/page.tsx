@@ -1,26 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import styles from "./page.module.css";
-
-const initialProfile = {
-  fullName: "Nimal Perera",
-  email: "nimal@ecocycle.lk",
-  phone: "+94 77 234 5678",
-  district: "Colombo",
-  address: "14/3 Stanley Tilakaratne Mw, Nugegoda",
-};
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 
 export default function ProfilePage() {
-    const [profile, setProfile] = useState(initialProfile);
+  const { user, profile: authProfile, loading } = useAuth();
+  const [profile, setProfile] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+    district: "",
+    address: "",
+    nic: "",
+  });
   const [credentials, setCredentials] = useState({
-    username: "nimalperera",
+    username: "",
     currentPassword: "",
     newPassword: "",
   });
   const [saved, setSaved] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
-  const handleChange = (field: keyof typeof initialProfile, value: string) => {
+  useEffect(() => {
+    if (authProfile) {
+      setProfile({
+        fullName: authProfile.fullName || "",
+        email: authProfile.email || "",
+        phone: authProfile.phone || "",
+        district: authProfile.district || "",
+        address: authProfile.address || "",
+        nic: authProfile.nic || "",
+      });
+      setCredentials((prev) => ({
+        ...prev,
+        username: authProfile.email?.split("@")[0] || "",
+      }));
+    }
+  }, [authProfile]);
+
+  const handleChange = (field: keyof typeof profile, value: string) => {
     setProfile((prev) => ({ ...prev, [field]: value }));
     setSaved(false);
   };
@@ -31,14 +52,53 @@ export default function ProfilePage() {
   };
 
   const handleCancel = () => {
-    setProfile(initialProfile);
-    setCredentials({ username: "nimalperera", currentPassword: "", newPassword: "" });
+    if (authProfile) {
+      setProfile({
+        fullName: authProfile.fullName || "",
+        email: authProfile.email || "",
+        phone: authProfile.phone || "",
+        district: authProfile.district || "",
+        address: authProfile.address || "",
+        nic: authProfile.nic || "",
+      });
+    }
+    setCredentials({
+      username: authProfile?.email?.split("@")[0] || "",
+      currentPassword: "",
+      newPassword: "",
+    });
     setSaved(false);
   };
 
-  const handleSave = () => {
-    setSaved(true);
+  const handleSave = async () => {
+    if (!user) return;
+    setUpdating(true);
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        fullName: profile.fullName,
+        email: profile.email,
+        phone: profile.phone,
+        district: profile.district,
+        address: profile.address,
+        nic: profile.nic,
+        updatedAt: serverTimestamp(),
+      });
+      setSaved(true);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+    } finally {
+      setUpdating(false);
+    }
   };
+
+  if (loading) {
+    return <div className={styles.root}><p>Loading profile...</p></div>;
+  }
+
+  if (!user) {
+    return <div className={styles.root}><p>Please sign in to view your profile.</p></div>;
+  }
 
   return (
     <div className={styles.root}>
@@ -93,6 +153,16 @@ export default function ProfilePage() {
                 />
               </label>
 
+              <label className={styles.field}>
+                <span>NIC</span>
+                <input
+                  type="text"
+                  value={profile.nic}
+                  onChange={(event) => handleChange("nic", event.target.value)}
+                  placeholder="e.g. 199012345678"
+                />
+              </label>
+
               <label className={styles.fieldFull}>
                 <span>Address</span>
                 <input
@@ -143,11 +213,11 @@ export default function ProfilePage() {
         </div>
 
         <div className={styles.buttonRow}>
-          <button type="button" className={styles.cancelButton} onClick={handleCancel}>
+          <button type="button" className={styles.cancelButton} onClick={handleCancel} disabled={updating}>
             Cancel
           </button>
-          <button type="button" className={styles.saveButton} onClick={handleSave}>
-            Save changes
+          <button type="button" className={styles.saveButton} onClick={handleSave} disabled={updating}>
+            {updating ? "Saving..." : "Save changes"}
           </button>
         </div>
 
