@@ -141,7 +141,7 @@ export default function AdminVehiclePage() {
         </section>
 
         <section className="admin-metrics">
-          {metrics.map((metric) => (
+         {metrics.map((metric) => (
             <div className="metric-card" key={metric.label}>
               <span>{metric.label}</span>
               <strong>{metric.value}</strong>

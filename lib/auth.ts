@@ -21,6 +21,8 @@ export type UserProfile = {
   role: UserRole;
   points: number;
   residences: number;
+  badgeLevel?: string;
+  badgeProgress?: number;
 };
 
 export async function signUpResident(
@@ -49,6 +51,8 @@ export async function signUpResident(
       role: "resident" as UserRole,
       points: 0,
       residences: 0,
+      badgeLevel: "Green Contributor",
+      badgeProgress: 0,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });

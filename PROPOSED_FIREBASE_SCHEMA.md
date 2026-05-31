@@ -1,25 +1,27 @@
 # Proposed Firebase Firestore Schema for Resident Features
 
-Based on the analysis of the `app/resident` directory, the following Firestore collection structures are proposed to transition from mock data to a persistent backend.
+Based on the analysis of the `app/resident` directory and the existing database structure, the following Firestore collection structures are proposed to transition from mock data to a persistent backend.
 
-## 1. `users` (Collection)
-*Core profile information and reward balance.*
+## 1. `users` (Collection) - *Augmented Document*
+This schema **augments** the existing user document created during signup. To minimize friction, fields like `nic` and `district` are initialized as empty strings and can be updated by the resident later in their profile settings.
+
 - **Document ID**: `uid` (Matches Firebase Auth UID)
-- **Fields**:
+- **Base Fields** (Common to all roles):
     - `uid`: `string`
     - `fullName`: `string`
     - `email`: `string`
     - `phone`: `string`
-    - `district`: `string`
-    - `address`: `string`
-    - `nic`: `string` (**Private**: Access restricted to Admin and Owner)
     - `role`: `"resident" | "collector" | "admin"`
-    - `points`: `number` (Current available points)
-    - `residences`: `number` (Number of registered properties)
-    - `badgeLevel`: `string` (e.g., "Green Champion")
-    - `badgeProgress`: `number` (Percentage, 0-100)
+    - `address`: `string`
+    - `district`: `string` (Initial: `""`)
+    - `nic`: `string` (Initial: `""`, **Private**: Access restricted to Admin and Owner)
+    - `points`: `number` (Initial: `0`)
+    - `residences`: `number` (Initial: `0`)
     - `createdAt`: `timestamp`
     - `updatedAt`: `timestamp`
+- **Resident-Specific Fields** (Only for `role: "resident"`):
+    - `badgeLevel`: `string` (Initial: e.g., `"Green Contributor"`)
+    - `badgeProgress`: `number` (Initial: `0`, 0-100 scale)
 
 ## 2. `complaints` (Collection)
 *Resident-submitted issues and their resolution status.*
