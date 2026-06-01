@@ -290,6 +290,7 @@ export default function AdminEmployeePage() {
                 >
                   <option value="Driver">Driver</option>
                   <option value="Collector">Collector</option>
+                  <option value="Admin">Admin</option>
                 </select>
               </div>
               <div className="form-row">

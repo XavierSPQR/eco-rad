@@ -23,13 +23,6 @@ const sidebarItems = [
   { label: "Reports", href: "/admin/report", icon: "📈" },
 ];
 
-const metrics = [
-  { label: "Total users", value: "12,840" },
-  { label: "Active drivers", value: "184" },
-  { label: "Pickups today", value: "1,206" },
-  { label: "Verified complaints", value: "94" },
-  { label: "Monthly waste", value: "284 t" },
-];
 
 const initialVehicles = [
   { type: "Compactor Truck", number: "WP 3456", status: "Active", driver: "Sumith Dissanayake", contact: "0778967345" },
@@ -140,14 +133,7 @@ export default function AdminVehiclePage() {
           </div>
         </section>
 
-        <section className="admin-metrics">
-         {metrics.map((metric) => (
-            <div className="metric-card" key={metric.label}>
-              <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
-            </div>
-          ))}
-        </section>
+        
 
         <section className="vehicle-card">
           <div className="card-header">
@@ -166,6 +152,8 @@ export default function AdminVehiclePage() {
               aria-label="Search vehicles"
             />
           </div>
+
+          
 
           <div className="vehicle-table">
             <div className="vehicle-row vehicle-row--header">
@@ -406,33 +394,11 @@ export default function AdminVehiclePage() {
           font-size: 0.8rem;
         }
 
-        .admin-metrics {
-          display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 18px;
-        }
 
         .metric-card,
         .vehicle-card {
           background: white;
           box-shadow: 0 20px 50px rgba(23, 63, 31, 0.08);
-        }
-
-        .metric-card {
-          border-radius: 24px;
-          padding: 24px;
-        }
-
-        .metric-card span {
-          display: block;
-          color: #6b7280;
-          font-size: 0.9rem;
-          margin-bottom: 10px;
-        }
-
-        .metric-card strong {
-          font-size: 1.75rem;
-          color: #15251f;
         }
 
         .vehicle-card {
