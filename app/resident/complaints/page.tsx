@@ -1,64 +1,64 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy, Timestamp } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "@/lib/firebase";
+import { useAuth } from "@/context/AuthContext";
 import styles from "./page.module.css";
 
 type ComplaintStatus = "In review" | "Resolved";
 
 type Complaint = {
   id: string;
+  userId: string;
+  userName: string;
   subject: string;
   description: string;
   status: ComplaintStatus;
   location: string;
-  createdAt: string;
-  photoName?: string;
+  photoUrl?: string;
+  createdAt: Timestamp | { seconds: number; nanoseconds: number } | null;
+  updatedAt: Timestamp | { seconds: number; nanoseconds: number } | null;
 };
 
-const INITIAL_COMPLAINTS: Complaint[] = [
-  {
-    id: "C-3128",
-    subject: "Overflowing bin",
-    description: "Overflowing bin at Borella",
-    status: "Resolved",
-    location: "Borella",
-    createdAt: "2026-05-09",
-    photoName: "bin.jpg",
-  },
-  {
-    id: "C-3129",
-    subject: "Missed pickup",
-    description: "Missed pickup at Nugegoda Lane 3",
-    status: "In review",
-    location: "Nugegoda Lane 3",
-    createdAt: "2026-05-11",
-  },
-  {
-    id: "C-3130",
-    subject: "Illegal dumping",
-    description: "Illegal dumping near Wellawatte beach",
-    status: "In review",
-    location: "Wellawatte beach",
-    createdAt: "2026-05-12",
-    photoName: "dumping.jpg",
-  },
-];
-
 export default function ComplaintsPage() {
+  const { user, profile } = useAuth();
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
-  const [photoName, setPhotoName] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [location, setLocation] = useState("");
-  const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
-  const [message, setMessage] = useState<"" | "success" | "error">("");
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [message, setMessage] = useState<"" | "success" | "error" | "auth-error">("");
 
-  const canSubmit = subject.trim().length > 0 && description.trim().length > 0;
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, "complaints"),
+      where("userId", "==", user.uid),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Complaint[];
+      setComplaints(docs);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const canSubmit = subject.trim().length > 0 && description.trim().length > 0 && !submitLoading;
 
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      setPhotoName(file.name);
+      setPhotoFile(file);
     }
   };
 
@@ -83,27 +83,51 @@ export default function ComplaintsPage() {
     );
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) {
       setMessage("error");
       return;
     }
 
-    const nextComplaint: Complaint = {
-      id: `C-${Math.floor(4000 + Math.random() * 5000)}`,
-      subject,
-      description,
-      status: "In review",
-      location: location || "Not provided",
-      createdAt: new Date().toISOString().slice(0, 10),
-      photoName: photoName || undefined,
-    };
+    if (!user || !profile) {
+      setMessage("auth-error");
+      return;
+    }
 
-    setComplaints((current) => [nextComplaint, ...current]);
-    setSubject("");
-    setDescription("");
-    setPhotoName(null);
-    setMessage("success");
+    setSubmitLoading(true);
+    setMessage("");
+
+    try {
+      let photoUrl = "";
+      if (photoFile) {
+        const storageRef = ref(storage, `complaints/${user.uid}/${Date.now()}_${photoFile.name}`);
+        const uploadResult = await uploadBytes(storageRef, photoFile);
+        photoUrl = await getDownloadURL(uploadResult.ref);
+      }
+
+      await addDoc(collection(db, "complaints"), {
+        userId: user.uid,
+        userName: profile.fullName,
+        subject,
+        description,
+        status: "In review",
+        location: location || "Not provided",
+        photoUrl: photoUrl || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      setSubject("");
+      setDescription("");
+      setPhotoFile(null);
+      setLocation("");
+      setMessage("success");
+    } catch (error) {
+      console.error("Error submitting complaint:", error);
+      setMessage("error");
+    } finally {
+      setSubmitLoading(false);
+    }
   };
 
   const statusCounts = useMemo(
@@ -113,6 +137,12 @@ export default function ComplaintsPage() {
     }),
     [complaints]
   );
+
+  const formatDate = (timestamp: Timestamp | { seconds: number; nanoseconds: number } | null) => {
+    if (!timestamp) return "Just now";
+    const date = (timestamp as Timestamp).toDate ? (timestamp as Timestamp).toDate() : new Date(timestamp.seconds * 1000);
+    return date.toLocaleDateString();
+  };
 
   return (
     <div className={styles.pageRoot}>
@@ -136,6 +166,7 @@ export default function ComplaintsPage() {
               value={subject}
               onChange={(event) => setSubject(event.target.value)}
               placeholder="Subject (e.g. Missed pickup)"
+              disabled={submitLoading}
             />
           </label>
 
@@ -145,29 +176,31 @@ export default function ComplaintsPage() {
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="Describe the issue. Our AI will tag and prioritize it."
+              disabled={submitLoading}
             />
           </label>
 
           <div className={styles.actionRow}>
             <label className={styles.fileButton}>
-              <input type="file" accept="image/*" onChange={handlePhotoUpload} />
+              <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={submitLoading} />
               Photo
-              {photoName ? <span className={styles.fileLabel}>{photoName}</span> : null}
+              {photoFile ? <span className={styles.fileLabel}>{photoFile.name}</span> : null}
             </label>
 
-            <button type="button" className={styles.locationButton} onClick={handleLocation}>
+            <button type="button" className={styles.locationButton} onClick={handleLocation} disabled={submitLoading}>
               {geoLoading ? "Locating…" : "Location"}
             </button>
           </div>
 
           <button type="button" className={styles.submitButton} onClick={handleSubmit} disabled={!canSubmit}>
-            Submit
+            {submitLoading ? "Submitting..." : "Submit"}
           </button>
 
           <div className={styles.aiHint}>AI suggestion: Add nearby landmark for faster resolution.</div>
 
           {message === "success" && <div className={styles.messageSuccess}>Complaint submitted and is now in review.</div>}
           {message === "error" && <div className={styles.messageError}>Please fill subject and description, or allow location access.</div>}
+          {message === "auth-error" && <div className={styles.messageError}>Please sign in to submit a complaint.</div>}
         </section>
 
         <section className={styles.listCard}>
@@ -176,24 +209,29 @@ export default function ComplaintsPage() {
             <span>{statusCounts.resolved} resolved</span>
           </div>
 
-          {complaints.map((complaint) => (
-            <article key={complaint.id} className={styles.complaintItem}>
-              <div className={styles.complaintMeta}>
-                <span className={styles.complaintId}>#{complaint.id}</span>
-                <span className={
-                  complaint.status === "Resolved" ? styles.statusResolved : styles.statusReview
-                }>
-                  {complaint.status}
-                </span>
-              </div>
-              <h3>{complaint.subject}</h3>
-              <p>{complaint.description}</p>
-              <div className={styles.complaintFooter}>
-                <span>{complaint.location}</span>
-                <span>{complaint.photoName ? "Photo evidence attached" : "No photo attached"}</span>
-              </div>
-            </article>
-          ))}
+          {complaints.length === 0 ? (
+            <p className={styles.emptyState}>No complaints found.</p>
+          ) : (
+            complaints.map((complaint) => (
+              <article key={complaint.id} className={styles.complaintItem}>
+                <div className={styles.complaintMeta}>
+                  <span className={styles.complaintId}>#{complaint.id.slice(0, 8)}</span>
+                  <span className={
+                    complaint.status === "Resolved" ? styles.statusResolved : styles.statusReview
+                  }>
+                    {complaint.status}
+                  </span>
+                </div>
+                <h3>{complaint.subject}</h3>
+                <p>{complaint.description}</p>
+                <div className={styles.complaintFooter}>
+                  <span>{complaint.location}</span>
+                  <span>{complaint.photoUrl ? "Photo evidence attached" : "No photo attached"}</span>
+                  <span className={styles.dateLabel}>{formatDate(complaint.createdAt)}</span>
+                </div>
+              </article>
+            ))
+          )}
         </section>
       </div>
     </div>
