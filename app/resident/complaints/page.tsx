@@ -31,7 +31,7 @@ export default function ComplaintsPage() {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
-  const [message, setMessage] = useState<"" | "success" | "error" | "auth-error">("");
+  const [message, setMessage] = useState<"" | "success" | "error" | "auth-error" | "permission-denied" | "index-needed">("");
 
   useEffect(() => {
     if (!user) return;
@@ -42,13 +42,24 @@ export default function ComplaintsPage() {
       orderBy("createdAt", "desc")
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Complaint[];
-      setComplaints(docs);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const docs = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Complaint[];
+        setComplaints(docs);
+      },
+      (error) => {
+        console.error("Error fetching complaints:", error);
+        if (error.code === "permission-denied") {
+          setMessage("permission-denied");
+        } else if (error.message.includes("index")) {
+          setMessage("index-needed");
+        }
+      }
+    );
 
     return () => unsubscribe();
   }, [user]);
@@ -122,9 +133,13 @@ export default function ComplaintsPage() {
       setPhotoFile(null);
       setLocation("");
       setMessage("success");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error submitting complaint:", error);
-      setMessage("error");
+      if (error.code === "permission-denied") {
+        setMessage("permission-denied");
+      } else {
+        setMessage("error");
+      }
     } finally {
       setSubmitLoading(false);
     }
@@ -201,6 +216,8 @@ export default function ComplaintsPage() {
           {message === "success" && <div className={styles.messageSuccess}>Complaint submitted and is now in review.</div>}
           {message === "error" && <div className={styles.messageError}>Please fill subject and description, or allow location access.</div>}
           {message === "auth-error" && <div className={styles.messageError}>Please sign in to submit a complaint.</div>}
+          {message === "permission-denied" && <div className={styles.messageError}>Permission denied. Please check your Firestore rules.</div>}
+          {message === "index-needed" && <div className={styles.messageError}>Firestore index required. Please check your console logs for the link.</div>}
         </section>
 
         <section className={styles.listCard}>
