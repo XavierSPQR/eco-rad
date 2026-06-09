@@ -1,6 +1,123 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  orderBy,
+  doc,
+  updateDoc,
+  addDoc,
+  serverTimestamp,
+  increment,
+  Timestamp,
+  writeBatch
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/context/AuthContext";
+
+type PickupRequest = {
+  id: string;
+  userId: string;
+  description: string;
+  location: string;
+  status: "pending" | "scheduled" | "completed" | "cancelled";
+  requestedDate: Timestamp | null;
+  createdAt: Timestamp | null;
+};
+
+type WasteType = "Recyclable" | "Organic" | "E-Waste";
+
+const POINTS_CONFIG: Record<WasteType, number> = {
+  Organic: 5,
+  Recyclable: 10,
+  "E-Waste": 20,
+};
 
 export default function CollectorTasksPage() {
+  const { user } = useAuth();
+  const [tasks, setTasks] = useState<PickupRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Confirmation Modal State
+  const [selectedTask, setSelectedTask] = useState<PickupRequest | null>(null);
+  const [wasteType, setWasteType] = useState<WasteType>("Organic");
+  const [weight, setWeight] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const q = query(
+      collection(db, "pickupRequests"),
+      where("status", "==", "pending"),
+      orderBy("requestedDate", "asc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const taskList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as PickupRequest[];
+      setTasks(taskList);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching tasks:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleConfirmCollection = async () => {
+    if (!selectedTask || !weight || isSubmitting || !user) return;
+
+    setIsSubmitting(true);
+    try {
+      const weightNum = parseFloat(weight);
+      const pointsEarned = weightNum * POINTS_CONFIG[wasteType];
+      const batch = writeBatch(db);
+
+      // 1. Create waste collection record
+      const collectionRef = doc(collection(db, "wasteCollections"));
+      batch.set(collectionRef, {
+        userId: selectedTask.userId,
+        wasteType,
+        weight: weightNum,
+        pointsEarned,
+        collectedAt: serverTimestamp(),
+        collectorId: user.uid,
+        requestId: selectedTask.id
+      });
+
+      // 2. Update pickup request status
+      const requestRef = doc(db, "pickupRequests", selectedTask.id);
+      batch.update(requestRef, {
+        status: "completed",
+        updatedAt: serverTimestamp()
+      });
+
+      // 3. Update resident points and residences count
+      const userRef = doc(db, "users", selectedTask.userId);
+      batch.update(userRef, {
+        points: increment(pointsEarned),
+        residences: increment(1),
+        updatedAt: serverTimestamp()
+      });
+
+      await batch.commit();
+
+      setSelectedTask(null);
+      setWeight("");
+    } catch (error) {
+      console.error("Error confirming collection:", error);
+      alert("Failed to confirm collection. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-[#F1F5F0] font-sans">
       {/* Sidebar */}
@@ -122,32 +239,42 @@ export default function CollectorTasksPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="text-[12px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-4">
-                  <th className="pb-4 font-bold">Route</th>
-                  <th className="pb-4 font-bold">Number of Pickups</th>
+                  <th className="pb-4 font-bold">Location</th>
+                  <th className="pb-4 font-bold">Description</th>
                   <th className="pb-4 font-bold">Request Date</th>
                   <th className="pb-4 font-bold text-center">Status</th>
                   <th className="pb-4"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {[
-                  { route: "Colombo South", bags: "12 bags", date: "2024-05-07", status: "Pending" },
-                  { route: "Colombo South", bags: "12 bags", date: "2024-05-07", status: "Pending" }
-                ].map((row, idx) => (
-                  <tr key={idx} className="group">
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="py-10 text-center text-gray-500">Loading tasks...</td>
+                  </tr>
+                ) : tasks.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-10 text-center text-gray-500">No pending tasks found.</td>
+                  </tr>
+                ) : tasks.map((task) => (
+                  <tr key={task.id} className="group">
                     <td className="py-5 flex items-center gap-3">
                       <svg className="w-5 h-5 text-gray-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
-                      <span className="font-bold text-gray-800 text-[14px]">{row.route}</span>
+                      <span className="font-bold text-gray-800 text-[14px]">{task.location}</span>
                     </td>
-                    <td className="py-5 font-bold text-gray-600 text-[14px]">{row.bags}</td>
-                    <td className="py-5 font-bold text-gray-600 text-[14px]">{row.date}</td>
+                    <td className="py-5 font-bold text-gray-600 text-[14px] truncate max-w-[200px]">{task.description}</td>
+                    <td className="py-5 font-bold text-gray-600 text-[14px]">
+                      {task.requestedDate?.toDate().toLocaleDateString() || "N/A"}
+                    </td>
                     <td className="py-5 text-center">
-                      <span className="bg-gradient-to-r from-[#F1883D] to-[#F37651] text-white text-[10px] font-bold px-4 py-1.5 rounded-full shadow-lg shadow-orange-500/20">
-                        {row.status}
+                      <span className="bg-gradient-to-r from-[#F1883D] to-[#F37651] text-white text-[10px] font-bold px-4 py-1.5 rounded-full shadow-lg shadow-orange-500/20 capitalize">
+                        {task.status}
                       </span>
                     </td>
                     <td className="py-5 text-right">
-                      <button className="bg-[#2E7D32] hover:bg-[#25632a] text-white text-[10px] font-bold px-5 py-1.5 rounded-full transition-colors">
+                      <button
+                        onClick={() => setSelectedTask(task)}
+                        className="bg-[#2E7D32] hover:bg-[#25632a] text-white text-[10px] font-bold px-5 py-1.5 rounded-full transition-colors"
+                      >
                         Confirm
                       </button>
                     </td>
@@ -155,6 +282,68 @@ export default function CollectorTasksPage() {
                 ))}
               </tbody>
             </table>
+
+            {/* Confirmation Modal */}
+            {selectedTask && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl">
+                  <h3 className="text-2xl font-bold text-gray-800 mb-6">Confirm Collection</h3>
+
+                  <div className="space-y-4 mb-8">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Waste Type</label>
+                      <select
+                        value={wasteType}
+                        onChange={(e) => setWasteType(e.target.value as WasteType)}
+                        className="w-full bg-[#F1F5F0] border-none rounded-xl px-4 py-3 text-gray-800 font-medium focus:ring-2 focus:ring-[#55B56F]"
+                      >
+                        <option value="Organic">Organic</option>
+                        <option value="Recyclable">Recyclable</option>
+                        <option value="E-Waste">E-Waste</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Weight (kg)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={weight}
+                        onChange={(e) => setWeight(e.target.value)}
+                        placeholder="e.g. 5.5"
+                        className="w-full bg-[#F1F5F0] border-none rounded-xl px-4 py-3 text-gray-800 font-medium focus:ring-2 focus:ring-[#55B56F]"
+                      />
+                    </div>
+
+                    <div className="bg-[#DBF2DC] p-4 rounded-2xl">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm font-bold text-gray-600">Points to be earned:</span>
+                        <span className="text-lg font-black text-[#2E7D32]">
+                          {weight ? (parseFloat(weight) * POINTS_CONFIG[wasteType]).toFixed(0) : 0}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-[#2E7D32] font-bold opacity-70">Resident will be notified immediately.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setSelectedTask(null)}
+                      className="flex-1 px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleConfirmCollection}
+                      disabled={!weight || isSubmitting}
+                      className="flex-1 bg-[#55B56F] hover:bg-[#469d5d] disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-[#55B56F]/20 transition-all"
+                    >
+                      {isSubmitting ? "Processing..." : "Complete Task"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>

@@ -1,11 +1,50 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import {
+  collection,
+  query,
+  where,
+  getCountFromServer,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/context/AuthContext";
 import styles from "./page.module.css";
 
 export default function CollectorDashboard() {
-  const pending = [
-    { barcode: "BC10231", category: "Recyclable", weight: "4.5 kg" },
-    { barcode: "BC10232", category: "Organic", weight: "2 kg" },
-  ];
+  const { profile } = useAuth();
+  const [stats, setStats] = useState({
+    completed: 0,
+    pending: 0,
+    verifications: 0
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const qPending = query(collection(db, "pickupRequests"), where("status", "==", "pending"));
+        const qCompleted = query(collection(db, "pickupRequests"), where("status", "==", "completed"));
+        const qCollections = collection(db, "wasteCollections");
+
+        const [pendingSnap, completedSnap, collectionsSnap] = await Promise.all([
+          getCountFromServer(qPending),
+          getCountFromServer(qCompleted),
+          getCountFromServer(qCollections)
+        ]);
+
+        setStats({
+          pending: pendingSnap.data().count,
+          completed: completedSnap.data().count,
+          verifications: collectionsSnap.data().count
+        });
+      } catch (error) {
+        console.error("Error fetching stats:", error);
+      }
+    };
+
+    fetchStats();
+  }, []);
 
   return (
     <div className={styles.root}>
@@ -36,7 +75,7 @@ export default function CollectorDashboard() {
         <header className={styles.header}>
           <div>
             <p className={styles.role}>COLLECTOR</p>
-            <h1 className={styles.greeting}>Hello, Sanjeewa!</h1>
+            <h1 className={styles.greeting}>Hello, {profile?.fullName || "Collector"}!</h1>
             <p className={styles.sub}>Working with Truck LK-4521 · Zone Colombo South</p>
           </div>
           <div className={styles.kpiRing}>
@@ -45,30 +84,19 @@ export default function CollectorDashboard() {
         </header>
 
         <section className={styles.stats}>
-          <div className={styles.statCard}><div className={styles.statNum}>23</div><div>Completed pickups</div></div>
-          <div className={styles.statCard}><div className={styles.statNum}>5</div><div>Pending pickups</div></div>
-          <div className={styles.statCard}><div className={styles.statNum}>146</div><div>Bags scanned</div></div>
-          <div className={styles.statCard}><div className={styles.statNum}>31</div><div>Verifications</div></div>
+          <div className={styles.statCard}><div className={styles.statNum}>{stats.completed}</div><div>Completed pickups</div></div>
+          <div className={styles.statCard}><div className={styles.statNum}>{stats.pending}</div><div>Pending pickups</div></div>
+          <div className={styles.statCard}><div className={styles.statNum}>{stats.verifications * 3}</div><div>Bags scanned</div></div>
+          <div className={styles.statCard}><div className={styles.statNum}>{stats.verifications}</div><div>Verifications</div></div>
         </section>
 
         <section className={styles.panels}>
           <div className={styles.pendingPanel}>
-            <h3>Pending verifications</h3>
-            <table className={styles.table}>
-              <thead>
-                <tr><th>BARCODE</th><th>AI CATEGORY</th><th>WEIGHT</th><th>ACTION</th></tr>
-              </thead>
-              <tbody>
-                {pending.map((p) => (
-                  <tr key={p.barcode}>
-                    <td>{p.barcode}</td>
-                    <td>{p.category}</td>
-                    <td>{p.weight}</td>
-                    <td><button className={styles.verify}>Verify</button> <button className={styles.reject}>Reject</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <h3>Recent verifications</h3>
+            <div className="flex flex-col items-center justify-center py-20 text-gray-500 italic">
+              Use the Tasks page to perform new verifications.
+              <Link href="/collector/tasks" className="mt-4 not-italic font-bold text-[#2E7D32] hover:underline">Go to Tasks →</Link>
+            </div>
           </div>
 
           <div className={styles.rightPanel}>
