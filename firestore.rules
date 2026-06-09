@@ -1,0 +1,84 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'admin';
+    }
+
+    function isCollector() {
+      return isSignedIn() && getUserData().role == 'collector';
+    }
+
+    // Rules for 'users' collection
+    match /users/{userId} {
+      // Residents can read their own profile, Admins can read all.
+      // Collector access is restricted if the document contains private NIC data.
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      // Users can create their own profile during signup
+      allow create: if isSignedIn() && request.auth.uid == userId;
+
+      // Users can update their own profile (with restrictions) or Admins can update all
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (request.auth.uid == userId &&
+         !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['role', 'points', 'residences', 'uid', 'email', 'badgeLevel', 'badgeProgress']))
+      );
+    }
+
+    // Rules for 'complaints' collection
+    match /complaints/{complaintId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // Rules for 'pickupRequests' collection
+    match /pickupRequests/{requestId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin() || isCollector());
+      allow update: if isAdmin() || isCollector() || (isSignedIn() && request.auth.uid == resource.data.userId && request.resource.data.status == 'cancelled');
+      allow delete: if isAdmin();
+    }
+
+    // Rules for 'wasteCollections' collection
+    match /wasteCollections/{collectionId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin() || isCollector());
+      allow create, update, delete: if isAdmin() || isCollector();
+    }
+
+    // Rules for 'notifications' collection
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isAdmin() || isCollector();
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Rules for 'rewards' collection (global catalog)
+    match /rewards/{rewardId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Rules for 'redemptions' collection
+    match /redemptions/{redemptionId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // Restricted to owner and admin due to sensitive NIC field
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+  }
+}
