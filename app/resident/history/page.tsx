@@ -1,29 +1,56 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  addDoc,
+  serverTimestamp,
+  orderBy,
+  Timestamp
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/context/AuthContext";
 import styles from "./page.module.css";
 
-type CollectionItem = {
-  date: string;
-  wasteType: "Recyclable" | "Organic" | "E-Waste";
+type WasteType = "Recyclable" | "Organic" | "E-Waste";
+
+type WasteCollection = {
+  id: string;
+  userId: string;
+  wasteType: WasteType;
   weight: number;
-  points: number;
+  pointsEarned: number;
+  collectedAt: Timestamp | null;
+  collectorId: string;
 };
 
-const COLLECTIONS: CollectionItem[] = [
-  { date: "2026-05-10", wasteType: "Recyclable", weight: 4.5, points: 90 },
-  { date: "2026-05-11", wasteType: "Organic", weight: 2.0, points: 20 },
-  { date: "2026-05-12", wasteType: "E-Waste", weight: 1.2, points: 60 },
-  { date: "2026-05-12", wasteType: "Recyclable", weight: 6.8, points: 136 },
-  { date: "2026-05-13", wasteType: "Organic", weight: 3.4, points: 34 },
-  { date: "2026-05-13", wasteType: "E-Waste", weight: 0.8, points: 40 },
-];
+type PickupRequest = {
+  id: string;
+  userId: string;
+  description: string;
+  location: string;
+  status: "pending" | "scheduled" | "completed" | "cancelled";
+  requestedDate: Timestamp | null;
+  createdAt: Timestamp | null;
+};
+
+type HistoryItem = {
+  id: string;
+  date: Date;
+  displayDate: string;
+  wasteType: WasteType | "Pending";
+  weight: number | "Pending";
+  points: number | "Pending";
+  isPending: boolean;
+};
 
 const WASTE_TYPES = ["Recyclable", "Organic", "E-Waste"] as const;
 
-type WasteType = (typeof WASTE_TYPES)[number];
-
 export default function CollectionHistoryPage() {
+  const { user } = useAuth();
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedTypes, setSelectedTypes] = useState<WasteType[]>([...WASTE_TYPES]);
   const [dateFrom, setDateFrom] = useState("");
@@ -32,15 +59,94 @@ export default function CollectionHistoryPage() {
   const [requestDescription, setRequestDescription] = useState("");
   const [requestLocation, setRequestLocation] = useState("");
   const [requestSubmitted, setRequestSubmitted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const filteredCollections = useMemo(() => {
-    return COLLECTIONS.filter((item) => {
-      if (!selectedTypes.includes(item.wasteType)) return false;
-      if (dateFrom && item.date < dateFrom) return false;
-      if (dateTo && item.date > dateTo) return false;
-      return true;
+  const [wasteCollections, setWasteCollections] = useState<WasteCollection[]>([]);
+  const [pickupRequests, setPickupRequests] = useState<PickupRequest[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const wasteQuery = query(
+      collection(db, "wasteCollections"),
+      where("userId", "==", user.uid),
+      orderBy("collectedAt", "desc")
+    );
+
+    const unsubWaste = onSnapshot(wasteQuery, (snapshot) => {
+      setWasteCollections(
+        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as WasteCollection))
+      );
+    }, (error) => {
+      console.error("Error fetching waste collections:", error);
+      if (error.message.includes("index")) {
+        setErrorMessage("index-needed");
+      }
     });
-  }, [selectedTypes, dateFrom, dateTo]);
+
+    const pickupQuery = query(
+      collection(db, "pickupRequests"),
+      where("userId", "==", user.uid),
+      orderBy("requestedDate", "desc")
+    );
+
+    const unsubPickup = onSnapshot(pickupQuery, (snapshot) => {
+      setPickupRequests(
+        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as PickupRequest))
+      );
+    }, (error) => {
+      console.error("Error fetching pickup requests:", error);
+      if (error.message.includes("index")) {
+        setErrorMessage("index-needed");
+      }
+    });
+
+    return () => {
+      unsubWaste();
+      unsubPickup();
+    };
+  }, [user]);
+
+  const historyItems = useMemo(() => {
+    const filteredWaste = wasteCollections.filter((item) => {
+      if (!item.collectedAt) return false;
+      const date = item.collectedAt.toDate();
+      const dateString = date.toISOString().split("T")[0];
+
+      if (!selectedTypes.includes(item.wasteType)) return false;
+      if (dateFrom && dateString < dateFrom) return false;
+      if (dateTo && dateString > dateTo) return false;
+      return true;
+    }).map((item): HistoryItem => {
+      const date = item.collectedAt?.toDate() || new Date();
+      return {
+        id: item.id,
+        date,
+        displayDate: date.toLocaleDateString(),
+        wasteType: item.wasteType,
+        weight: item.weight,
+        points: item.pointsEarned,
+        isPending: false
+      };
+    });
+
+    const pendingRequests = pickupRequests
+      .filter(req => req.status === "pending")
+      .map((item): HistoryItem => {
+        const date = item.requestedDate?.toDate() || new Date();
+        return {
+          id: item.id,
+          date,
+          displayDate: date.toLocaleDateString(),
+          wasteType: "Pending",
+          weight: "Pending",
+          points: "Pending",
+          isPending: true
+        };
+      });
+
+    return [...filteredWaste, ...pendingRequests].sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [wasteCollections, pickupRequests, selectedTypes, dateFrom, dateTo]);
 
   const toggleType = (type: WasteType) => {
     setSelectedTypes((current) =>
@@ -58,9 +164,22 @@ export default function CollectionHistoryPage() {
     window.print();
   };
 
-  const handleSubmitRequest = () => {
-    if (!requestDescription.trim() || !requestLocation.trim()) return;
-    setRequestSubmitted(true);
+  const handleSubmitRequest = async () => {
+    if (!requestDescription.trim() || !requestLocation.trim() || !user) return;
+
+    try {
+      await addDoc(collection(db, "pickupRequests"), {
+        userId: user.uid,
+        description: requestDescription,
+        location: requestLocation,
+        status: "pending",
+        requestedDate: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      });
+      setRequestSubmitted(true);
+    } catch (error) {
+      console.error("Error submitting pickup request:", error);
+    }
   };
 
   const closeModal = () => {
@@ -94,6 +213,12 @@ export default function CollectionHistoryPage() {
           </button>
         </div>
       </div>
+
+      {errorMessage === "index-needed" && (
+        <div style={{ color: "red", padding: "10px", background: "#fee2e2", borderRadius: "8px" }}>
+          Firestore index required. Please check the browser console for the setup link.
+        </div>
+      )}
 
       {filterOpen && (
         <div className={styles.filterPanel}>
@@ -139,7 +264,7 @@ export default function CollectionHistoryPage() {
             <button type="button" className={styles.clearButton} onClick={clearFilters}>
               Clear filters
             </button>
-            <span>{filteredCollections.length} records shown</span>
+            <span>{historyItems.length} records shown</span>
           </div>
         </div>
       )}
@@ -153,15 +278,19 @@ export default function CollectionHistoryPage() {
         </div>
 
         <div className={styles.tableBody}>
-          {filteredCollections.map((item, index) => (
-            <div key={`${item.date}-${index}`} className={styles.tableRow}>
-              <span className={styles.cellDate}>{item.date}</span>
+          {historyItems.map((item) => (
+            <div key={item.id} className={styles.tableRow}>
+              <span className={styles.cellDate}>{item.displayDate}</span>
               <span className={styles.cellType}>{item.wasteType}</span>
-              <span className={styles.cellValue}>{item.weight.toFixed(1)}</span>
-              <span className={styles.cellPoints}>+{item.points}</span>
+              <span className={styles.cellValue}>
+                {typeof item.weight === "number" ? item.weight.toFixed(1) : item.weight}
+              </span>
+              <span className={styles.cellPoints}>
+                {typeof item.points === "number" ? `+${item.points}` : item.points}
+              </span>
             </div>
           ))}
-          {filteredCollections.length === 0 && (
+          {historyItems.length === 0 && (
             <div className={styles.emptyState}>No collections match the selected filters.</div>
           )}
         </div>
