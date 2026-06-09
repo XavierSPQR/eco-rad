@@ -11,14 +11,18 @@ import {
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 import styles from "./page.module.css";
+import { useLiveTracking } from "@/lib/useLiveTracking";
 
 export default function CollectorDashboard() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const [stats, setStats] = useState({
     completed: 0,
     pending: 0,
     verifications: 0
   });
+
+  // Start live tracking
+  useLiveTracking(user, profile);
 
   useEffect(() => {
     const fetchStats = async () => {

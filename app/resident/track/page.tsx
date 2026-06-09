@@ -1,56 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/context/AuthContext";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Truck = {
   id: string;
   driver: string;
-  location: string;
-  eta: number; // minutes
+  location?: string;
+  area?: string;
+  zone?: string;
+  eta: string | number; // minutes or string
   lat: number;
   lng: number;
-  phone: string;
+  phone?: string;
 };
 
 // ── Mock truck data (Colombo zone) ────────────────────────────────────────────
 
-const TRUCKS: Truck[] = [
-  {
-    id: "LK-4521",
-    driver: "Kasun Silva",
-    location: "Nugegoda",
-    eta: 12,
-    lat: 6.8725,
-    lng: 79.8899,
-    phone: "tel:+94771234567",
-  },
-  {
-    id: "LK-4538",
-    driver: "Pradeep Wickrama",
-    location: "Dehiwala",
-    eta: 26,
-    lat: 6.8519,
-    lng: 79.8653,
-    phone: "tel:+94772345678",
-  },
-  {
-    id: "LK-4612",
-    driver: "Roshan Gunasekera",
-    location: "Mt. Lavinia",
-    eta: 44,
-    lat: 6.8300,
-    lng: 79.8652,
-    phone: "tel:+94773456789",
-  },
-];
+
 
 // ── ETA colour helper ─────────────────────────────────────────────────────────
 
-function etaColor(eta: number) {
-  if (eta <= 15) return "#2e7d32";
-  if (eta <= 30) return "#f59e0b";
+function etaColor(eta: number | string) {
+  const numEta = typeof eta === "string" ? parseInt(eta) || 0 : eta;
+  if (numEta <= 15) return "#2e7d32";
+  if (numEta <= 30) return "#f59e0b";
   return "#ef4444";
 }
 
@@ -93,7 +71,7 @@ function TruckCard({
             <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
             <circle cx="12" cy="9" r="2.5" />
           </svg>
-          {truck.location}
+          {truck.location || truck.area || truck.zone || "Colombo"}
         </span>
         <span className="tt-meta-row" style={{ color: etaColor(truck.eta) }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -116,7 +94,8 @@ function TruckCard({
 
 // ── Map embed (OpenStreetMap centred on Colombo) ───────────────────────────────
 
-function MapEmbed({ truck }: { truck: Truck }) {
+function MapEmbed({ truck }: { truck: Truck | null }) {
+  if (!truck) return null;
   // bbox centres around the selected truck with ~0.06 degree padding
   const pad = 0.04;
   const bbox = `${truck.lng - pad},${truck.lat - pad},${truck.lng + pad},${truck.lat + pad}`;
@@ -130,7 +109,7 @@ function MapEmbed({ truck }: { truck: Truck }) {
     <iframe
       key={truck.id}           // re-mount on truck change
       src={src}
-      title={`Map showing ${truck.id} near ${truck.location}`}
+      title={`Map showing ${truck.id}`}
       className="tt-map-iframe"
       loading="lazy"
       referrerPolicy="no-referrer"
@@ -141,7 +120,37 @@ function MapEmbed({ truck }: { truck: Truck }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function TrackTruckPage() {
-  const [activeTruck, setActiveTruck] = useState<Truck>(TRUCKS[0]);
+  const { profile } = useAuth();
+  const [activeTruck, setActiveTruck] = useState<Truck | null>(null);
+  const [trucks, setTrucks] = useState<Truck[]>([]);
+
+  useEffect(() => {
+    // Only listen to trucks in the resident's district, or fallback to all if none
+    const trucksRef = collection(db, "activeVehicles");
+    const q = profile?.district
+      ? query(trucksRef, where("area", "==", profile.district))
+      : trucksRef;
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const liveTrucks = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Truck[];
+
+      setTrucks(liveTrucks);
+
+      setActiveTruck((prev) => {
+        if (!prev && liveTrucks.length > 0) return liveTrucks[0];
+        if (prev && liveTrucks.length > 0) {
+          const updated = liveTrucks.find((t) => t.id === prev.id);
+          return updated || liveTrucks[0];
+        }
+        return prev;
+      });
+    });
+
+    return () => unsubscribe();
+  }, [profile]);
 
   return (
     <div className="tt-root">
@@ -158,25 +167,38 @@ export default function TrackTruckPage() {
 
         {/* Map */}
         <div className="tt-map-wrap">
-          <MapEmbed truck={activeTruck} />
+          {activeTruck ? (
+            <>
+              <MapEmbed truck={activeTruck} />
 
-          {/* Live badge */}
-          <div className="tt-live-badge">
-            <span className="tt-live-dot" />
-            LIVE
-          </div>
+              {/* Live badge */}
+              <div className="tt-live-badge">
+                <span className="tt-live-dot" />
+                LIVE
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-500 font-medium">
+              No active trucks in your zone.
+            </div>
+          )}
         </div>
 
         {/* Truck list */}
         <div className="tt-list">
-          {TRUCKS.map((t) => (
+          {trucks.map((t) => (
             <TruckCard
               key={t.id}
               truck={t}
-              active={t.id === activeTruck.id}
+              active={activeTruck ? t.id === activeTruck.id : false}
               onClick={() => setActiveTruck(t)}
             />
           ))}
+          {trucks.length === 0 && (
+            <div className="text-gray-500 text-sm mt-4">
+              Currently no live tracking available for your location.
+            </div>
+          )}
         </div>
       </div>
 

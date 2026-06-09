@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
-
+import { useMemo, useState, useEffect } from "react";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
   { label: "Live Tracking", href: "/admin/live-tracking", icon: "📍" },
@@ -31,19 +32,15 @@ const metrics = [
   { label: "Monthly waste", value: "284 t" },
 ];
 
-const vehicles = [
-  { id: "LK-4521", driver: "Kasun Silva", area: "Nugegoda", eta: "12 min", status: "Live", progress: 72, lat: 6.8725, lng: 79.8899, phone: "tel:+94771234567" },
-  { id: "LK-4538", driver: "Pradeep Wickrama", area: "Dehiwala", eta: "26 min", status: "Live", progress: 56, lat: 6.8519, lng: 79.8653, phone: "tel:+94772345678" },
-  { id: "LK-4612", driver: "Roshan Gunasekara", area: "Mt. Lavinia", eta: "41 min", status: "Delayed", progress: 38, lat: 6.8300, lng: 79.8652, phone: "tel:+94773456789" },
-  { id: "LK-4498", driver: "Nadun Perera", area: "Rajagiriya", eta: "18 min", status: "Live", progress: 64, lat: 6.8870, lng: 79.9015, phone: "tel:+94774567890" },
-];
+
 
 /**
  * OpenStreetMap embed needs lat/lng for the currently selected vehicle.
  * Admin view uses the selected vehicle to center the map (similar to resident track page).
  */
 
-function MapEmbed({ vehicle }: { vehicle: (typeof vehicles)[number] }) {
+function MapEmbed({ vehicle }: { vehicle: any }) {
+  if (!vehicle) return null;
   // bbox centres around selected vehicle with ~0.06 degree padding
   const pad = 0.04;
   const bbox = `${vehicle.lng - pad},${vehicle.lat - pad},${vehicle.lng + pad},${vehicle.lat + pad}`;
@@ -66,8 +63,28 @@ function MapEmbed({ vehicle }: { vehicle: (typeof vehicles)[number] }) {
 export default function AdminLiveTrackingPage() {
   const pathname = usePathname();
   const [query, setQuery] = useState("");
-  const [selectedVehicle, setSelectedVehicle] = useState(vehicles[0]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [selectedVehicle, setSelectedVehicle] = useState<any | null>(null);
   const [contacted, setContacted] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "activeVehicles"), (snapshot) => {
+      const activeTrucks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setVehicles(activeTrucks);
+      
+      // Select the first vehicle by default if none is selected and we have trucks
+      setSelectedVehicle((prev: any) => {
+        if (!prev && activeTrucks.length > 0) return activeTrucks[0];
+        if (prev && activeTrucks.length > 0) {
+          // Update selected vehicle's position if it exists in the new snapshot
+          const updated = activeTrucks.find((t: any) => t.id === prev.id);
+          return updated || activeTrucks[0];
+        }
+        return prev;
+      });
+    });
+    return () => unsubscribe();
+  }, []);
 
   const filteredVehicles = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -202,8 +219,8 @@ export default function AdminLiveTrackingPage() {
                 <h2>Live route tracking</h2>
                 <p>Monitor active collection trucks and route progress.</p>
               </div>
-              <div className={selectedVehicle.status === "Live" ? "status-chip status-active" : "status-chip status-delayed"}>
-                {selectedVehicle.status}
+              <div className={selectedVehicle?.status === "Live" ? "status-chip status-active" : "status-chip status-delayed"}>
+                {selectedVehicle?.status || "Unknown"}
               </div>
             </div>
 
@@ -217,19 +234,27 @@ export default function AdminLiveTrackingPage() {
             </div>
 
             <div className="tt-map-wrap route-map">
-              <MapEmbed vehicle={selectedVehicle} />
+              {selectedVehicle ? (
+                <>
+                  <MapEmbed vehicle={selectedVehicle} />
 
-              {/* Live badge */}
-              <div className="tt-live-badge">
-                <span className="tt-live-dot" />
-                LIVE
-              </div>
+                  {/* Live badge */}
+                  <div className="tt-live-badge">
+                    <span className="tt-live-dot" />
+                    LIVE
+                  </div>
 
-              {/* Keep existing vehicle chip overlay style */}
-              <div className="vehicle-chip">
-                <strong>{selectedVehicle.id}</strong>
-                <span>{selectedVehicle.eta} away</span>
-              </div>
+                  {/* Keep existing vehicle chip overlay style */}
+                  <div className="vehicle-chip">
+                    <strong>{selectedVehicle.id}</strong>
+                    <span>{selectedVehicle.eta || "N/A"} away</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500 font-medium bg-[#e8f5e9]">
+                  No active vehicles found.
+                </div>
+              )}
             </div>
           </article>
 
@@ -244,7 +269,7 @@ export default function AdminLiveTrackingPage() {
             <div className="vehicle-list pickme-grid">
               {filteredVehicles.map((vehicle) => (
                 <button
-                  className={selectedVehicle.id === vehicle.id ? "vehicle-card pickme-card selected" : "vehicle-card pickme-card"}
+                  className={selectedVehicle?.id === vehicle.id ? "vehicle-card pickme-card selected" : "vehicle-card pickme-card"}
                   key={vehicle.id}
                   onClick={() => setSelectedVehicle(vehicle)}
                   type="button"

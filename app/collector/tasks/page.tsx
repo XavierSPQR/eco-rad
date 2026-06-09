@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
+import { useLiveTracking } from "@/lib/useLiveTracking";
 
 type PickupRequest = {
   id: string;
@@ -38,9 +39,12 @@ const POINTS_CONFIG: Record<WasteType, number> = {
 };
 
 export default function CollectorTasksPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [tasks, setTasks] = useState<PickupRequest[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Start live tracking
+  useLiveTracking(user, profile);
 
   // Confirmation Modal State
   const [selectedTask, setSelectedTask] = useState<PickupRequest | null>(null);
