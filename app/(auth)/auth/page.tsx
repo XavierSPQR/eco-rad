@@ -192,9 +192,11 @@ function friendlyError(code: string, rawMessage?: string): string {
   return "Something went wrong. Please try again.";
 }
 
+import { Suspense } from "react";
+
 // ── Page component ────────────────────────────────────────────────────────────
 
-export default function AuthPage() {
+function AuthPageContent() {
   const [tab, setTab] = useState<"login" | "signup">("login");
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -922,5 +924,13 @@ export default function AuthPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthPageContent />
+    </Suspense>
   );
 }
