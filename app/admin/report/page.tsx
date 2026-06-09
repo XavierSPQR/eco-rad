@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 
 type WasteType =
   | "Plastic"
@@ -155,29 +157,61 @@ export default function AdminReportPage() {
   const pathname = usePathname();
   const [activeTab, setActiveTab] = useState<"waste" | "vehicle">("waste");
 
+  const [wasteCollections, setWasteCollections] = useState<WasteCollectionRow[]>([]);
+  const [vehicleAssignments, setVehicleAssignments] = useState<VehicleAssignmentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
   // Waste filters
-  const [wFromDate, setWFromDate] = useState("2026-05-01");
-  const [wToDate, setWToDate] = useState("2026-05-06");
+  const [wFromDate, setWFromDate] = useState(new Date().toISOString().split('T')[0]);
+  const [wToDate, setWToDate] = useState(new Date().toISOString().split('T')[0]);
   const [wasteType, setWasteType] = useState<WasteType | "ALL">("ALL");
 
   // Vehicle filters
-  const [vFromDate, setVFromDate] = useState("2026-05-01");
-  const [vToDate, setVToDate] = useState("2026-05-06");
+  const [vFromDate, setVFromDate] = useState(new Date().toISOString().split('T')[0]);
+  const [vToDate, setVToDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [wApplied, setWApplied] = useState(false);
   const [vApplied, setVApplied] = useState(false);
 
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const wSnap = await getDocs(query(collection(db, "wasteCollections"), orderBy("collectedAt", "desc")));
+        const wData = wSnap.docs.map(doc => {
+          const d = doc.data();
+          return {
+            date: d.collectedAt?.toDate ? d.collectedAt.toDate().toISOString().split('T')[0] : "",
+            wasteType: d.wasteType,
+            collectionId: doc.id,
+            weightKg: d.weight,
+          } as WasteCollectionRow;
+        });
+        setWasteCollections(wData);
+
+        // For now, vehicle assignments might still be empty or come from a different collection if implemented
+        // Leaving it as empty array or mock if preferred, but schema doesn't specify a vehicleAssignments collection clearly
+        // Let's check if there is a 'trips' or similar. Assuming empty for now.
+        setVehicleAssignments([]);
+      } catch (error) {
+        console.error("Error fetching report data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
   const filteredWaste = useMemo(() => {
-    return mockWasteCollections.filter((row) => {
+    return wasteCollections.filter((row) => {
       if (!isWithinRange(row.date, wFromDate, wToDate)) return false;
       if (wasteType !== "ALL" && row.wasteType !== wasteType) return false;
       return true;
     });
-  }, [wFromDate, wToDate, wasteType]);
+  }, [wasteCollections, wFromDate, wToDate, wasteType]);
 
   const filteredVehicle = useMemo(() => {
-    return mockVehicleAssignments.filter((row) => isWithinRange(row.date, vFromDate, vToDate));
-  }, [vFromDate, vToDate]);
+    return vehicleAssignments.filter((row) => isWithinRange(row.date, vFromDate, vToDate));
+  }, [vehicleAssignments, vFromDate, vToDate]);
 
   const wasteTotals = useMemo(() => {
     const total = filteredWaste.reduce((sum, r) => sum + r.weightKg, 0);
@@ -394,7 +428,9 @@ export default function AdminReportPage() {
                   <span className="right">WEIGHT (KG)</span>
                 </div>
 
-                {(wApplied ? filteredWaste : []).map((r) => (
+                {loading ? (
+                   <div className="empty-state">Loading data...</div>
+                ) : (wApplied ? filteredWaste : []).map((r) => (
                   <div className="table-row" key={`${r.collectionId}-${r.date}-${r.wasteType}`}>
                     <span>{r.date}</span>
                     <span>{r.wasteType}</span>
@@ -403,7 +439,7 @@ export default function AdminReportPage() {
                   </div>
                 ))}
 
-                {wApplied && filteredWaste.length === 0 && (
+                {!loading && wApplied && filteredWaste.length === 0 && (
                   <div className="empty-state">
                     <strong>No waste collections found</strong>
                     <span>Adjust the date range or waste type.</span>

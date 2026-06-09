@@ -1,93 +1,67 @@
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  doc,
+  updateDoc,
+  writeBatch,
+  getDocs,
+} from "firebase/firestore";
+
 export type NotificationType = "truck" | "verified" | "reward" | "resolved";
 
 export type Notification = {
   id: string;
+  userId: string;
   type: NotificationType;
   title: string;
   description: string;
-  time: string;
+  createdAt: any;
   read: boolean;
 };
 
-export const INITIAL_NOTIFICATIONS: Notification[] = [
-  {
-    id: "n1",
-    type: "truck",
-    title: "Truck arriving in 12 min",
-    description: "LK-4521 is approaching Nugegoda zone B",
-    time: "2m ago",
-    read: false,
-  },
-  {
-    id: "n2",
-    type: "verified",
-    title: "Verified: BC10234",
-    description: "+136 points credited to your wallet",
-    time: "1h ago",
-    read: false,
-  },
-  {
-    id: "n3",
-    type: "reward",
-    title: "Reward unlocked",
-    description: "Free reusable tote at Keells Super",
-    time: "Yesterday",
-    read: true,
-  },
-  {
-    id: "n4",
-    type: "resolved",
-    title: "Complaint resolved",
-    description: "Overflowing bin · Borella reported by you",
-    time: "2d ago",
-    read: true,
-  },
-  {
-    id: "n5",
-    type: "truck",
-    title: "Truck arriving in 12 min",
-    description: "LK-4521 is approaching Nugegoda zone B",
-    time: "2m ago",
-    read: false,
-  },
-  {
-    id: "n6",
-    type: "verified",
-    title: "Verified: BC10234",
-    description: "+136 points credited to your wallet",
-    time: "1h ago",
-    read: true,
-  },
-];
+export function subscribeToNotifications(userId: string, callback: (items: Notification[]) => void) {
+  const q = query(
+    collection(db, "notifications"),
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc")
+  );
 
-const STORAGE_KEY = "eco_notifications_v1";
-
-export function loadNotifications(): Notification[] {
-  try {
-    const raw = (globalThis.window !== undefined && globalThis.window.localStorage.getItem(STORAGE_KEY)) || null;
-    if (raw) return JSON.parse(raw) as Notification[];
-  } catch (e) {
-    console.warn("Failed to load notifications from storage:", e);
-  }
-  return INITIAL_NOTIFICATIONS;
+  return onSnapshot(q, (snapshot) => {
+    const items = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Notification[];
+    callback(items);
+  });
 }
 
-export function saveNotifications(items: Notification[]) {
+export async function markAllRead(userId: string) {
   try {
-    if (globalThis.window !== undefined) {
-      globalThis.window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-      globalThis.dispatchEvent(new CustomEvent("eco:notifications:changed"));
-    }
+    const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", userId),
+      where("read", "==", false)
+    );
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((d) => {
+      batch.update(d.ref, { read: true });
+    });
+    await batch.commit();
   } catch (e) {
-    console.warn("Failed to save notifications:", e);
+    console.error("Failed to mark all notifications as read:", e);
   }
 }
 
-export function markAllRead() {
-  const items = loadNotifications().map((n) => ({ ...n, read: true }));
-  saveNotifications(items);
-}
-
-export function getUnreadCount() {
-  return loadNotifications().filter((n) => !n.read).length;
+export async function markAsRead(notificationId: string) {
+  try {
+    const docRef = doc(db, "notifications", notificationId);
+    await updateDoc(docRef, { read: true });
+  } catch (e) {
+    console.error("Failed to mark notification as read:", e);
+  }
 }

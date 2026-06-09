@@ -3,6 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  doc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -27,87 +37,53 @@ export default function AdminRewardRedeemManagementPage() {
   const pathname = usePathname();
   type RewardRedeemRecord = {
     id: string;
-    date: string;
-    name: string;
+    createdAt: any;
+    residentName: string;
     nic: string;
     rewardName: string;
-    action?: "pending" | "completed";
+    status: "pending" | "completed";
   };
 
   const [records, setRecords] = useState<RewardRedeemRecord[]>([]);
-
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    const init = () => {
-      try {
-        const raw = localStorage.getItem("rewardRedeems");
-        const defaultRecords: RewardRedeemRecord[] = [
-          {
-            id: "mock-1",
-            date: new Date().toISOString(),
-            name: "Nimal Perera",
-            nic: "987654321V",
-            rewardName: "Coconut Shells Wooden Spoon",
-            action: "pending",
-          },
-          {
-            id: "mock-2",
-            date: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-            name: "Samantha Silva",
-            nic: "200112345678",
-            rewardName: "Eco Grocery Voucher",
-            action: "completed",
-          },
-        ];
+    const q = query(collection(db, "redemptions"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as RewardRedeemRecord[];
+      setRecords(data);
+      setLoading(false);
+    });
 
-        if (raw) {
-          const parsed = JSON.parse(raw) as unknown;
-          const existing = Array.isArray(parsed) ? (parsed as RewardRedeemRecord[]) : [];
-
-          const merged = defaultRecords.reduce((acc, record) => {
-            const alreadyExists = acc.some((item) => item.id === record.id);
-            return alreadyExists ? acc : [record, ...acc];
-          }, existing);
-
-          const isUnchanged = merged.length === existing.length;
-          if (!isUnchanged) {
-            localStorage.setItem("rewardRedeems", JSON.stringify(merged));
-          }
-
-          setRecords(isUnchanged ? existing : merged);
-        } else {
-          setRecords(defaultRecords);
-          localStorage.setItem("rewardRedeems", JSON.stringify(defaultRecords));
-        }
-      } catch (error) {
-        console.error("Failed to load rewardRedeems from localStorage", error);
-        setRecords([]);
-      }
-    };
-
-    init();
+    return () => unsubscribe();
   }, []);
 
-
-  const persist = (next: RewardRedeemRecord[]) => {
-    setRecords(next);
-    localStorage.setItem("rewardRedeems", JSON.stringify(next));
+  const setCompleted = async (id: string) => {
+    try {
+      await updateDoc(doc(db, "redemptions", id), {
+        status: "completed",
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Error updating redemption status:", error);
+      alert("Failed to update status.");
+    }
   };
 
-
-  const setCompleted = (id: string) => {
-    const next = records.map((record) =>
-      record.id === id ? { ...record, action: "completed" as const } : record
-    );
-    persist(next);
-  };
-
-  const setPending = (id: string) => {
-    const next = records.map((record) =>
-      record.id === id ? { ...record, action: "pending" as const } : record
-    );
-    persist(next);
+  const setPending = async (id: string) => {
+    try {
+      await updateDoc(doc(db, "redemptions", id), {
+        status: "pending",
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Error updating redemption status:", error);
+      alert("Failed to update status.");
+    }
   };
 
 
@@ -189,7 +165,9 @@ export default function AdminRewardRedeemManagementPage() {
           </div>
 
           <div style={{ marginTop: 18 }}>
-            {records.length === 0 ? (
+            {loading ? (
+              <div style={{ color: "#556b54" }}>Loading redemption records...</div>
+            ) : records.length === 0 ? (
               <div style={{ color: "#556b54" }}>No redemption records yet.</div>
             ) : (
               <div style={{ overflowX: "auto" }}>
@@ -200,7 +178,7 @@ export default function AdminRewardRedeemManagementPage() {
                       <th style={{ padding: 8 }}>Name</th>
                       <th style={{ padding: 8 }}>NIC</th>
                       <th style={{ padding: 8 }}>Reward</th>
-                      <th style={{ padding: 8 }}>Action</th>
+                      <th style={{ padding: 8 }}>Status</th>
                       <th style={{ padding: 8 }}>Controls</th>
                     </tr>
                   </thead>
@@ -210,20 +188,22 @@ export default function AdminRewardRedeemManagementPage() {
                         const query = searchTerm.trim().toLowerCase();
                         if (!query) return true;
                         return (
-                          r.name.toLowerCase().includes(query) ||
+                          r.residentName.toLowerCase().includes(query) ||
                           r.nic.toLowerCase().includes(query)
                         );
                       })
                       .map((r) => (
                         <tr key={r.id} style={{ borderBottom: "1px solid #f3f7f3" }}>
-                          <td style={{ padding: 8 }}>{new Date(r.date).toLocaleString()}</td>
-                          <td style={{ padding: 8 }}>{r.name}</td>
+                          <td style={{ padding: 8 }}>
+                            {r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString() : "Just now"}
+                          </td>
+                          <td style={{ padding: 8 }}>{r.residentName}</td>
                           <td style={{ padding: 8 }}>{r.nic}</td>
                           <td style={{ padding: 8 }}>{r.rewardName}</td>
-                          <td style={{ padding: 8 }}>{r.action ?? "pending"}</td>
+                          <td style={{ padding: 8 }}>{r.status ?? "pending"}</td>
 
                           <td style={{ padding: 8 }}>
-                            {r.action === "completed" ? (
+                            {r.status === "completed" ? (
                               <button
                                 onClick={() => {
                                   const ok = window.confirm("Mark this redemption as pending?");
@@ -238,8 +218,6 @@ export default function AdminRewardRedeemManagementPage() {
                               <button onClick={() => setCompleted(r.id)} className="admin-primary">Mark as Completed</button>
                             )}
                           </td>
-
-
                         </tr>
                       ))}
                   </tbody>

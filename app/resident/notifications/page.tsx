@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import styles from "./page.module.css";
-import { loadNotifications, markAllRead, Notification, NotificationType } from "./data";
+import { subscribeToNotifications, markAllRead, Notification, NotificationType } from "./data";
+import { useAuth } from "@/context/AuthContext";
 
 function iconForType(type: NotificationType) {
   switch (type) {
@@ -34,20 +35,41 @@ function iconForType(type: NotificationType) {
           <path d="M15 6h6v6" />
         </svg>
       );
+    default:
+      return null;
   }
 }
 
+function formatTime(createdAt: any) {
+  if (!createdAt) return "Just now";
+  const date = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
+  const now = new Date();
+  const diffInSecs = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSecs < 60) return "Just now";
+  if (diffInSecs < 3600) return `${Math.floor(diffInSecs / 60)}m ago`;
+  if (diffInSecs < 86400) return `${Math.floor(diffInSecs / 3600)}h ago`;
+  if (diffInSecs < 172800) return "Yesterday";
+  return date.toLocaleDateString();
+}
+
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>(() => loadNotifications());
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // When this page mounts, mark all notifications as read.
-    // Avoid calling setState synchronously inside the effect body.
-    markAllRead();
-    setTimeout(() => {
-      setNotifications(loadNotifications());
-    }, 0);
-  }, []);
+    if (!user) return;
+
+    const unsubscribe = subscribeToNotifications(user.uid, (items) => {
+      setNotifications(items);
+      setLoading(false);
+    });
+
+    markAllRead(user.uid);
+
+    return () => unsubscribe();
+  }, [user]);
 
   return (
     <div className={styles.root}>
@@ -60,19 +82,25 @@ export default function NotificationsPage() {
 
       <div className={styles.notificationCard}>
         <div className={styles.notificationBody}>
-          {notifications.map((notification) => (
-            <article
-              key={notification.id}
-              className={`${styles.notificationItem} ${notification.read ? styles.notificationRead : ""}`}
-            >
-              <div className={styles.notificationIcon}>{iconForType(notification.type)}</div>
-              <div className={styles.notificationText}>
-                <strong className={styles.notificationTitle}>{notification.title}</strong>
-                <span className={styles.notificationDesc}>{notification.description}</span>
-              </div>
-              <span className={styles.notificationTime}>{notification.time}</span>
-            </article>
-          ))}
+          {loading ? (
+            <div style={{ padding: 20, textAlign: 'center', color: '#6b7280' }}>Loading notifications...</div>
+          ) : notifications.length === 0 ? (
+            <div style={{ padding: 20, textAlign: 'center', color: '#6b7280' }}>No notifications yet.</div>
+          ) : (
+            notifications.map((notification) => (
+              <article
+                key={notification.id}
+                className={`${styles.notificationItem} ${notification.read ? styles.notificationRead : ""}`}
+              >
+                <div className={styles.notificationIcon}>{iconForType(notification.type)}</div>
+                <div className={styles.notificationText}>
+                  <strong className={styles.notificationTitle}>{notification.title}</strong>
+                  <span className={styles.notificationDesc}>{notification.description}</span>
+                </div>
+                <span className={styles.notificationTime}>{formatTime(notification.createdAt)}</span>
+              </article>
+            ))
+          )}
         </div>
       </div>
     </div>

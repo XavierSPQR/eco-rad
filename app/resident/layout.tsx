@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { logOut } from "@/lib/auth";
-import { getUnreadCount, markAllRead } from "./notifications/data";
+import { subscribeToNotifications, markAllRead } from "./notifications/data";
 
 const NAV = [
   {
@@ -140,7 +140,7 @@ export default function ResidentLayout({ children }: { children: React.ReactNode
   const { user, profile, loading } = useAuth();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(() => getUnreadCount());
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loggingOut, setLoggingOut] = useState(false);
 
   // ── Auth guard ──────────────────────────────────────────────────────────────
@@ -152,10 +152,13 @@ export default function ResidentLayout({ children }: { children: React.ReactNode
 
   // ── Notification count listener ─────────────────────────────────────────────
   useEffect(() => {
-    const onChange = () => setUnreadCount(getUnreadCount());
-    globalThis.addEventListener("eco:notifications:changed", onChange);
-    return () => globalThis.removeEventListener("eco:notifications:changed", onChange);
-  }, []);
+    if (!user) return;
+    const unsubscribe = subscribeToNotifications(user.uid, (items) => {
+      const count = items.filter(n => !n.read).length;
+      setUnreadCount(count);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleLogout = async () => {
@@ -169,7 +172,9 @@ export default function ResidentLayout({ children }: { children: React.ReactNode
   };
 
   const openNotifications = () => {
-    markAllRead();
+    if (user) {
+      markAllRead(user.uid);
+    }
     setUnreadCount(0);
     router.push("/resident/notifications");
   };

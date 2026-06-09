@@ -3,6 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
+import { db, storage } from "@/lib/firebase";
+import {
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  query,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -26,7 +38,11 @@ const sidebarItems = [
 export default function AdminRewardStoreManagementPage() {
   const pathname = usePathname();
   const [rewards, setRewards] = useState<any[]>([]);
-  const nameRef = useRef<HTMLInputElement | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const titleRef = useRef<HTMLInputElement | null>(null);
+  const categoryRef = useRef<HTMLInputElement | null>(null);
   const pointsRef = useRef<HTMLInputElement | null>(null);
   const descRef = useRef<HTMLTextAreaElement | null>(null);
   const imageRef = useRef<HTMLInputElement | null>(null);
@@ -36,115 +52,83 @@ export default function AdminRewardStoreManagementPage() {
   const collectorsRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("rewards");
-      const requiredReward = {
-        id: "mock-3",
-        name: "Coconut Shells Wooden Spoon",
-        description: "Handmade good quality spoon.",
-        points: 180,
-        quantity: 10,
-        image: "",
-        audiences: ["residents", "collectors"],
-      };
+    const q = query(collection(db, "rewards"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setRewards(data);
+      setLoading(false);
+    });
 
-      if (raw) {
-        const existing = JSON.parse(raw) as any[];
-        const hasRequiredReward = existing.some((reward) => reward.id === requiredReward.id);
-        if (hasRequiredReward) {
-          setRewards(existing);
-        } else {
-          const updated = [requiredReward, ...existing];
-          setRewards(updated);
-          localStorage.setItem("rewards", JSON.stringify(updated));
-        }
-      } else {
-        const mock = [
-          {
-            id: "mock-1",
-            name: "Eco Grocery Voucher",
-            description: "Rs.2,500 voucher for eco-friendly groceries.",
-            points: 400,
-            image: "",
-            audiences: ["residents", "drivers"],
-          },
-          {
-            id: "mock-2",
-            name: "Reusable Kit Bundle",
-            description: "Starter kit: reusable bags, bottles and containers.",
-            points: 250,
-            image: "",
-            audiences: ["collectors", "residents"],
-          },
-          requiredReward,
-        ];
-        setRewards(mock);
-        localStorage.setItem("rewards", JSON.stringify(mock));
-      }
-    } catch (error) {
-      console.error("Failed to load rewards from localStorage", error);
-      setRewards([]);
-    }
+    return () => unsubscribe();
   }, []);
-
-  const persist = (next: any[]) => {
-    setRewards(next);
-    localStorage.setItem("rewards", JSON.stringify(next));
-  };
 
   const handleAdd = async (e: any) => {
     e.preventDefault();
-    const name = nameRef.current?.value?.trim() ?? "";
-    const points = Number.parseInt(pointsRef.current?.value ?? "0", 10) || 0;
+    const title = titleRef.current?.value?.trim() ?? "";
+    const category = categoryRef.current?.value?.trim() ?? "General";
+    const pointsRequired = Number.parseInt(pointsRef.current?.value ?? "0", 10) || 0;
     const description = descRef.current?.value ?? "";
-    let imageData = "";
-    const file = imageRef.current?.files?.[0];
-    if (file) {
-      imageData = await new Promise<string>((res) => {
-        const r = new FileReader();
-        r.onload = () => {
-          if (typeof r.result === "string") res(r.result);
-          else res("");
-        };
-        r.readAsDataURL(file);
+    const quantity = Number.parseInt(quantityRef.current?.value ?? "0", 10) || null;
+
+    if (!title) return alert("Please provide a reward title.");
+
+    setIsSubmitting(true);
+    try {
+      let imageUrl = "";
+      const file = imageRef.current?.files?.[0];
+      if (file) {
+        const storageRef = ref(storage, `rewards/${Date.now()}_${file.name}`);
+        const snapshot = await uploadBytes(storageRef, file);
+        imageUrl = await getDownloadURL(snapshot.ref);
+      }
+
+      const audiences = [] as string[];
+      if (residentsRef.current?.checked) audiences.push("residents");
+      if (driversRef.current?.checked) audiences.push("drivers");
+      if (collectorsRef.current?.checked) audiences.push("collectors");
+
+      await addDoc(collection(db, "rewards"), {
+        title,
+        category,
+        description,
+        pointsRequired,
+        quantity,
+        image: imageUrl,
+        audiences,
+        active: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
+
+      // clear form
+      if (titleRef.current) titleRef.current.value = "";
+      if (categoryRef.current) categoryRef.current.value = "";
+      if (pointsRef.current) pointsRef.current.value = "";
+      if (descRef.current) descRef.current.value = "";
+      if (quantityRef.current) quantityRef.current.value = "";
+      if (imageRef.current) imageRef.current.value = "";
+      if (residentsRef.current) residentsRef.current.checked = true;
+      if (driversRef.current) driversRef.current.checked = true;
+      if (collectorsRef.current) collectorsRef.current.checked = true;
+    } catch (error) {
+      console.error("Error adding reward:", error);
+      alert("Failed to add reward. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (!name) return alert("Please provide a reward name.");
-
-    const audiences = [] as string[];
-    if (residentsRef.current?.checked) audiences.push("residents");
-    if (driversRef.current?.checked) audiences.push("drivers");
-    if (collectorsRef.current?.checked) audiences.push("collectors");
-
-    const quantity = Number.parseInt(quantityRef.current?.value ?? "0", 10) || undefined;
-
-    const newReward = {
-      id: Date.now().toString(),
-      name,
-      description,
-      points,
-      quantity,
-      image: imageData,
-      audiences,
-    };
-
-    persist([newReward, ...rewards]);
-
-    // clear form
-    if (nameRef.current) nameRef.current.value = "";
-    if (pointsRef.current) pointsRef.current.value = "";
-    if (descRef.current) descRef.current.value = "";
-    if (quantityRef.current) quantityRef.current.value = "";
-    if (imageRef.current) imageRef.current.value = "";
-    if (residentsRef.current) residentsRef.current.checked = true;
-    if (driversRef.current) driversRef.current.checked = true;
-    if (collectorsRef.current) collectorsRef.current.checked = true;
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Delete this reward?")) return;
-    persist(rewards.filter((r) => r.id !== id));
+    try {
+      await deleteDoc(doc(db, "rewards", id));
+    } catch (error) {
+      console.error("Error deleting reward:", error);
+      alert("Failed to delete reward.");
+    }
   };
 
   return (
@@ -211,8 +195,11 @@ export default function AdminRewardStoreManagementPage() {
           <div style={{ marginTop: 18 }}>
             <form onSubmit={handleAdd} style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 260px" }}>
               <div style={{ display: "grid", gap: 10 }}>
-                <label htmlFor="reward-name" style={{ fontWeight: 700, color: "#17350f" }}>Reward name</label>
-                <input id="reward-name" ref={nameRef} placeholder="e.g. Eco Grocery Voucher" required className="reward-input" />
+                <label htmlFor="reward-title" style={{ fontWeight: 700, color: "#17350f" }}>Reward title</label>
+                <input id="reward-title" ref={titleRef} placeholder="e.g. Eco Grocery Voucher" required className="reward-input" />
+
+                <label htmlFor="reward-category" style={{ fontWeight: 700, color: "#17350f" }}>Category</label>
+                <input id="reward-category" ref={categoryRef} placeholder="e.g. Shopping, Utilities" required className="reward-input" />
 
                 <label htmlFor="reward-description" style={{ fontWeight: 700, color: "#17350f" }}>Short description</label>
                 <textarea id="reward-description" ref={descRef} placeholder="One-line description" rows={3} className="reward-input" required />
@@ -235,8 +222,9 @@ export default function AdminRewardStoreManagementPage() {
                 <input id="reward-image" ref={imageRef} type="file" accept="image/*" />
 
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <button type="submit" className="admin-primary">Add Reward</button>
-                  <button type="button" className="admin-secondary" onClick={() => { if (confirm("Clear all mock rewards?")) { persist([]); } }}>Clear all</button>
+                  <button type="submit" className="admin-primary" disabled={isSubmitting}>
+                    {isSubmitting ? "Adding..." : "Add Reward"}
+                  </button>
                 </div>
               </div>
             </form>
@@ -244,26 +232,31 @@ export default function AdminRewardStoreManagementPage() {
             <div style={{ marginTop: 20 }}>
               <h3 style={{ margin: "6px 0 12px" }}>Existing rewards</h3>
               <div style={{ display: "grid", gap: 12 }}>
-                {rewards.length === 0 ? (
+                {loading ? (
+                  <div style={{ color: "#556b54" }}>Loading rewards...</div>
+                ) : rewards.length === 0 ? (
                   <div style={{ color: "#556b54" }}>No rewards yet.</div>
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
                     {rewards.map((r) => (
                       <div key={r.id} className="reward-card">
                         <div className="reward-media">
-                          {r.image ? <img src={r.image} alt={r.name} /> : <div className="reward-placeholder">🏷️</div>}
+                          {r.image ? <img src={r.image} alt={r.title} /> : <div className="reward-placeholder">🏷️</div>}
                         </div>
                         <div className="reward-body">
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                            <strong style={{ fontSize: 16 }}>{r.name}</strong>
-                            <span className="reward-points">{r.points} pts</span>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: 10, color: '#666', fontWeight: 700, textTransform: 'uppercase' }}>{r.category}</span>
+                              <strong style={{ fontSize: 16 }}>{r.title}</strong>
+                            </div>
+                            <span className="reward-points">{r.pointsRequired} pts</span>
                           </div>
                           <div style={{ color: "#556b54", marginTop: 8 }}>{r.description}</div>
                           <div style={{ marginTop: 10 }}>
                             {(r.audiences || ["residents","drivers","collectors"]).map((a: string) => (
                               <span key={a} className="audience-chip">{a}</span>
                             ))}
-                          {typeof r.quantity === "number" ? <div style={{ marginTop: 8, color: '#1f4f2f', fontWeight: 700 }}>Qty: {r.quantity}</div> : null}
+                          {typeof r.quantity === "number" && r.quantity !== null ? <div style={{ marginTop: 8, color: '#1f4f2f', fontWeight: 700 }}>Qty: {r.quantity}</div> : null}
                           </div>
                         </div>
                         <div className="reward-actions">

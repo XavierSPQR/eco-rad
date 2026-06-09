@@ -3,6 +3,18 @@
 import { useState, useEffect } from "react";
 import styles from "./page.module.css";
 import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  addDoc,
+  doc,
+  updateDoc,
+  onSnapshot,
+  query,
+  where,
+  serverTimestamp,
+  increment,
+} from "firebase/firestore";
 
 const BADGES = [
   {
@@ -106,9 +118,10 @@ function OfferCard({
   offer,
   onRedeem,
 }: {
-  offer: (typeof OFFERS)[number];
-  onRedeem: (offer: (typeof OFFERS)[number]) => void;
+  offer: any;
+  onRedeem: (offer: any) => void;
 }) {
+  const points = offer.pointsRequired !== undefined ? offer.pointsRequired : offer.points;
   return (
     <article className={`${styles.offerCard} ${offer.active ? "" : styles.offerCardDisabled}`}>
       <div className={styles.offerMeta}>
@@ -118,7 +131,7 @@ function OfferCard({
       <h3 className={styles.offerTitle}>{offer.title}</h3>
       <p className={styles.offerDescription}>{offer.description}</p>
       <div className={styles.offerFooter}>
-        <span className={styles.offerPoints}>{offer.points} pts</span>
+        <span className={styles.offerPoints}>{points} pts</span>
         <button type="button" className={styles.redeemButton} disabled={!offer.active} onClick={() => onRedeem(offer)}>
           Redeem
         </button>
@@ -128,15 +141,16 @@ function OfferCard({
 }
 
 export default function ResidentRewardsPage() {
-  const { profile } = useAuth();
-  const [availablePoints, setAvailablePoints] = useState(450);
+  const { profile, user } = useAuth();
+  const [availablePoints, setAvailablePoints] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
-  const [storeRewards, setStoreRewards] = useState<typeof OFFERS>([]);
+  const [storeRewards, setStoreRewards] = useState<any[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
   const [redeemName, setRedeemName] = useState("");
   const [redeemNic, setRedeemNic] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -145,28 +159,21 @@ export default function ResidentRewardsPage() {
   }, [profile]);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("rewards");
-      if (raw) {
-        const parsed = JSON.parse(raw) as any[];
-        const normalized = parsed.map((r) => ({
-          category: "Store",
-          title: r.name,
-          description: r.description,
-          points: r.points || 0,
-          active: true,
-          image: r.image,
-          audiences: r.audiences ?? ["residents", "drivers", "collectors"],
-        }));
-        const filtered = normalized.filter((x) => (x.audiences || []).includes("residents"));
-        setStoreRewards(filtered);
-      }
-    } catch (e) {
-      setStoreRewards([]);
-    }
+    const q = query(collection(db, "rewards"), where("active", "==", true));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+        .filter((r: any) => (r.audiences || []).includes("residents"));
+      setStoreRewards(data);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const handleRedeem = (offer: (typeof OFFERS)[number] & { image?: string }) => {
+  const handleRedeem = (offer: any) => {
     if (!offer.active) return;
     setSelectedOffer(offer);
     setRedeemName(profile?.fullName || "");
@@ -174,38 +181,50 @@ export default function ResidentRewardsPage() {
     setModalOpen(true);
   };
 
-  const confirmRedeem = () => {
-    if (!selectedOffer) return;
-    const offer = selectedOffer as typeof OFFERS[number];
-    if (offer.points > availablePoints) {
+  const confirmRedeem = async () => {
+    if (!selectedOffer || !user) return;
+    const offer = selectedOffer;
+    const pointsRequired = offer.pointsRequired || offer.points;
+
+    if (pointsRequired > availablePoints) {
       setMessage("Insufficient points to redeem this reward.");
       setIsError(true);
       setModalOpen(false);
       return;
     }
 
-    setAvailablePoints((current) => current - offer.points);
-    setMessage(`Redeemed ${offer.title} for ${offer.points} points.`);
-    setIsError(false);
-
-    const rec = {
-      date: new Date().toISOString(),
-      name: redeemName || "Anonymous",
-      nic: redeemNic || "-",
-      rewardName: offer.title,
-      action: "pending",
-    };
+    setIsSubmitting(true);
     try {
-      const raw = localStorage.getItem("rewardRedeems");
-      const arr = raw ? JSON.parse(raw) : [];
-      arr.unshift(rec);
-      localStorage.setItem("rewardRedeems", JSON.stringify(arr));
-    } catch (e) {
-      // ignore
-    }
+      // 1. Deduct points from user
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        points: increment(-pointsRequired),
+        updatedAt: serverTimestamp(),
+      });
 
-    setModalOpen(false);
-    setSelectedOffer(null);
+      // 2. Create redemption record
+      await addDoc(collection(db, "redemptions"), {
+        userId: user.uid,
+        rewardId: offer.id || "manual",
+        rewardName: offer.title,
+        pointsSpent: pointsRequired,
+        residentName: redeemName || profile?.fullName || "Anonymous",
+        nic: redeemNic || profile?.nic || "-",
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+
+      setMessage(`Successfully redeemed ${offer.title}!`);
+      setIsError(false);
+    } catch (error) {
+      console.error("Redemption error:", error);
+      setMessage("Failed to redeem reward. Please try again.");
+      setIsError(true);
+    } finally {
+      setIsSubmitting(false);
+      setModalOpen(false);
+      setSelectedOffer(null);
+    }
   };
 
   return (
@@ -245,7 +264,7 @@ export default function ResidentRewardsPage() {
 
         <div className={styles.offerGrid}>
           {storeRewards.length > 0
-            ? storeRewards.map((offer) => <OfferCard offer={offer as any} key={offer.title} onRedeem={handleRedeem} />)
+            ? storeRewards.map((offer) => <OfferCard offer={offer} key={offer.id || offer.title} onRedeem={handleRedeem} />)
             : OFFERS.map((offer) => <OfferCard offer={offer} key={offer.title} onRedeem={handleRedeem} />)}
         </div>
       </section>
@@ -254,7 +273,7 @@ export default function ResidentRewardsPage() {
         <div className={styles.redeemModalBackdrop}>
           <div className={styles.redeemModal} role="dialog" aria-modal="true">
             <div className={styles.redeemModalHeader}>Confirm redemption</div>
-            <div style={{ marginBottom: 8 }}>{selectedOffer.title} — {selectedOffer.points} pts</div>
+            <div style={{ marginBottom: 8 }}>{selectedOffer.title} — {selectedOffer.pointsRequired || selectedOffer.points} pts</div>
             <div className={styles.redeemFormRow}>
               <label style={{ fontSize: 12, color: "#374151" }}>Full name</label>
               <input className={styles.redeemInput} value={redeemName} onChange={(e) => setRedeemName(e.target.value)} placeholder="Your full name" />
@@ -266,8 +285,10 @@ export default function ResidentRewardsPage() {
             </div>
 
             <div className={styles.redeemActions}>
-              <button className={styles.redeemButton} onClick={() => { setModalOpen(false); setSelectedOffer(null); }}>Cancel</button>
-              <button className={styles.redeemButton} onClick={confirmRedeem}>Confirm Redeem</button>
+              <button className={styles.redeemButton} disabled={isSubmitting} onClick={() => { setModalOpen(false); setSelectedOffer(null); }}>Cancel</button>
+              <button className={styles.redeemButton} disabled={isSubmitting} onClick={confirmRedeem}>
+                {isSubmitting ? "Processing..." : "Confirm Redeem"}
+              </button>
             </div>
           </div>
         </div>
