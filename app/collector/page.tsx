@@ -12,6 +12,7 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 import styles from "./page.module.css";
 import { useLiveTracking } from "@/lib/useLiveTracking";
+import { RoleGuard } from "@/components/RoleGuard";
 
 export default function CollectorDashboard() {
   const { user, profile } = useAuth();
@@ -51,6 +52,7 @@ export default function CollectorDashboard() {
   }, []);
 
   return (
+    <RoleGuard allowedRole="collector">
     <div className={styles.root}>
       <aside className={styles.sidebar}>
         <div className={styles.logo}>EcoCycle</div>
@@ -121,5 +123,6 @@ export default function CollectorDashboard() {
         </section>
       </main>
     </div>
+    </RoleGuard>
   );
 }

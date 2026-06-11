@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RoleGuard } from "@/components/RoleGuard";
+
+
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { db } from "@/lib/firebase";
@@ -245,6 +249,7 @@ export default function AdminReportPage() {
   };
 
   return (
+        <RoleGuard allowedRole="admin">
     <div className="admin-root">
       <aside className="admin-sidebar">
         <div className="admin-logo">
@@ -922,6 +927,7 @@ export default function AdminReportPage() {
         }
       `}</style>
     </div>
+    </RoleGuard>
   );
 }
 

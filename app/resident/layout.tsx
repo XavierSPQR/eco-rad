@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { logOut } from "@/lib/auth";
 import { subscribeToNotifications, markAllRead } from "./notifications/data";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 const NAV = [
   {
@@ -93,45 +94,6 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// ── Loading skeleton ──────────────────────────────────────────────────────────
-
-function LoadingScreen() {
-  return (
-    <div style={{
-      minHeight: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "#f5f7f5",
-      fontFamily: "'DM Sans', sans-serif",
-      flexDirection: "column",
-      gap: 16,
-    }}>
-      <div style={{
-        width: 40,
-        height: 40,
-        background: "#2e7d32",
-        borderRadius: "50%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#fff",
-        fontSize: 18,
-        animation: "pulse 1.5s ease-in-out infinite",
-      }}>
-        ♻
-      </div>
-      <p style={{ color: "#6b7280", fontSize: "0.85rem", margin: 0 }}>Loading…</p>
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50%       { transform: scale(1.12); opacity: 0.75; }
-        }
-      `}</style>
-    </div>
-  );
-}
-
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 export default function ResidentLayout({ children }: { children: React.ReactNode }) {
@@ -145,10 +107,28 @@ export default function ResidentLayout({ children }: { children: React.ReactNode
 
   // ── Auth guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+
+    if (!user) {
       router.push("/auth?role=resident");
+      return;
     }
-  }, [user, loading, router]);
+
+    if (!profile) {
+      // If user is logged in but profile is missing, stay on login page with error
+      // Since we are already in the app, we might want to redirect to /auth
+      router.push("/auth");
+      return;
+    }
+
+    if (profile.role !== "resident") {
+      if (profile.role === "admin") {
+        router.push("/admin/overview");
+      } else if (profile.role === "collector") {
+        router.push("/collector");
+      }
+    }
+  }, [user, profile, loading, router]);
 
   // ── Notification count listener ─────────────────────────────────────────────
   useEffect(() => {
@@ -180,8 +160,9 @@ export default function ResidentLayout({ children }: { children: React.ReactNode
   };
 
   // ── Guards ───────────────────────────────────────────────────────────────────
-  if (loading) return <LoadingScreen />;
-  if (!user) return null;
+  if (loading || !user || !profile || profile.role !== "resident") {
+    return <LoadingScreen />;
+  }
 
   // ── Derived display values ───────────────────────────────────────────────────
   const displayName = profile?.fullName ?? user.email ?? "Resident";

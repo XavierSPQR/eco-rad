@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import styles from './page.module.css'
 import Link from 'next/link'
@@ -22,6 +22,12 @@ const FacebookIcon = () => (
 
 export default function AdminLoginPage(){
   const router = useRouter()
+
+  // Redirect to shared auth page
+  useEffect(() => {
+    router.replace("/auth?role=admin")
+  }, [router])
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
