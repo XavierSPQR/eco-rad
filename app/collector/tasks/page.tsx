@@ -19,6 +19,7 @@ import {
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 import { useLiveTracking } from "@/lib/useLiveTracking";
+import { RoleGuard } from "@/components/RoleGuard";
 
 type PickupRequest = {
   id: string;
@@ -123,6 +124,7 @@ export default function CollectorTasksPage() {
   };
 
   return (
+    <RoleGuard allowedRole="collector">
     <div className="flex min-h-screen bg-[#F1F5F0] font-sans">
       {/* Sidebar */}
       <aside className="w-64 bg-white/50 p-6 flex flex-col gap-8">
@@ -352,5 +354,6 @@ export default function CollectorTasksPage() {
         </div>
       </main>
     </div>
+    </RoleGuard>
   );
 }

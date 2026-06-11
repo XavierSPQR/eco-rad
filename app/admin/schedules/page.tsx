@@ -1,6 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { RoleGuard } from "@/components/RoleGuard";
+
+
+
 import { usePathname } from "next/navigation";
 
 const sidebarItems = [
@@ -26,6 +30,7 @@ export default function AdminSchedulesPage() {
   const pathname = usePathname();
 
   return (
+        <RoleGuard allowedRole="admin">
     <div className="admin-root">
       <aside className="admin-sidebar">
         <div className="admin-logo">
@@ -269,5 +274,6 @@ export default function AdminSchedulesPage() {
         }
       `}</style>
     </div>
+    </RoleGuard>
   );
 }

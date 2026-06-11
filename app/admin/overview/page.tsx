@@ -1,6 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { RoleGuard } from "@/components/RoleGuard";
+
+
+
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
@@ -62,6 +66,7 @@ export default function AdminOverviewPage() {
   };
 
   return (
+        <RoleGuard allowedRole="admin">
     <div className="admin-root">
       <aside className="admin-sidebar">
         <div className="admin-logo">
@@ -282,8 +287,7 @@ export default function AdminOverviewPage() {
           </div>
         </div>
       )}
-
-      <style>{`
+    <style>{`
         .admin-root {
           min-height: 100vh;
           background: linear-gradient(180deg, #ecf7ee 0%, #f9fcf8 40%, #fcfefd 100%);
@@ -894,5 +898,6 @@ export default function AdminOverviewPage() {
         }
       `}</style>
     </div>
+    </RoleGuard>
   );
 }

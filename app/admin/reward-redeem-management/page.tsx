@@ -1,6 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { RoleGuard } from "@/components/RoleGuard";
+
+
+
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
@@ -88,6 +92,7 @@ export default function AdminRewardRedeemManagementPage() {
 
 
   return (
+        <RoleGuard allowedRole="admin">
     <div className="admin-root">
       <aside className="admin-sidebar">
         <div className="admin-logo">
@@ -411,5 +416,6 @@ export default function AdminRewardRedeemManagementPage() {
         }
       `}</style>
     </div>
+    </RoleGuard>
   );
 }

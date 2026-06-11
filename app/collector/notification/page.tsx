@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { RoleGuard } from "@/components/RoleGuard";
 
 export default function CollectorNotificationPage() {
   const notifications = [
@@ -109,6 +112,7 @@ export default function CollectorNotificationPage() {
   };
 
   return (
+    <RoleGuard allowedRole="collector">
     <div className="flex min-h-screen bg-[#F1F5F0] font-sans">
       {/* Sidebar */}
       <aside className="w-64 bg-white/50 p-6 flex flex-col gap-8">
@@ -230,5 +234,6 @@ export default function CollectorNotificationPage() {
         </div>
       </main>
     </div>
+    </RoleGuard>
   );
 }

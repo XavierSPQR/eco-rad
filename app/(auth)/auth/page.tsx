@@ -237,9 +237,16 @@ function AuthPageContent() {
     setLoading(true);
     try {
       const { profile } = await signIn(loginEmail.trim(), loginPassword);
-      if (profile?.role === "collector") router.push("/collector");
-      else if (profile?.role === "admin") router.push("/admin/overview");
-      else router.push("/resident");
+      if (!profile) {
+        setError("Account profile not found. Please contact support.");
+        return;
+      }
+      if (profile.role === "collector") router.push("/collector");
+      else if (profile.role === "admin") router.push("/admin/overview");
+      else if (profile.role === "resident") router.push("/resident");
+      else {
+        setError("Invalid account role. Please contact support.");
+      }
     } catch (e: any) {
       // Log the full error object so the raw code is visible in DevTools
       console.error("[handleSignIn] error:", e.code, e.message, e);

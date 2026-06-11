@@ -1,6 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { RoleGuard } from "@/components/RoleGuard";
+
+
+
 import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -102,6 +106,7 @@ export default function AdminNotificationPage() {
   };
 
   return (
+        <RoleGuard allowedRole="admin">
     <div className="admin-root">
       <aside className="admin-sidebar">
         <div className="admin-logo">
@@ -760,5 +765,6 @@ export default function AdminNotificationPage() {
         }
       `}</style>
     </div>
+    </RoleGuard>
   );
 }

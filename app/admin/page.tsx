@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import styles from './page.module.css'
+import { RoleGuard } from "@/components/RoleGuard"
 
 const leaves = [
   { left: '39%', top: '25%', rotate: -18, size: 25 },
@@ -49,6 +50,7 @@ function UserIcon() {
 
 export default function AdminLanding() {
   return (
+    <RoleGuard allowedRole="admin">
     <main className={styles.container}>
       <div className={styles.leafField} aria-hidden="true">
         {leaves.map((leaf) => (
@@ -144,5 +146,6 @@ export default function AdminLanding() {
         </Link>
       </section>
     </main>
+    </RoleGuard>
   )
 }
