@@ -15,6 +15,8 @@ import {
   doc,
   serverTimestamp,
   Timestamp,
+  query,
+  where,
 } from "firebase/firestore";
 
 interface User {
@@ -76,7 +78,8 @@ export default function AdminUsersPage() {
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        const querySnapshot = await getDocs(collection(db, "users"));
+        const q = query(collection(db, "users"), where("role", "==", "resident"));
+        const querySnapshot = await getDocs(q);
         const usersData = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           return {
@@ -139,6 +142,7 @@ export default function AdminUsersPage() {
       const firestoreData = {
         ...otherData,
         fullName: name,
+        role: "resident", // Ensure role is always resident
         points: Number(formData.points),
         residences: Number(formData.residences),
       };
@@ -272,7 +276,7 @@ export default function AdminUsersPage() {
       <main className="admin-main">
         <div className="admin-top">
           <div className="admin-search">
-            <input placeholder="Search users, roles, districts..." />
+            <input placeholder="Search residents, districts..." />
           </div>
           <div className="admin-usercard">
             <div className="admin-avatar">AU</div>
@@ -285,22 +289,22 @@ export default function AdminUsersPage() {
 
         <section className="admin-header-card users-header">
           <div>
-            <span className="admin-chip">USER CONTROL</span>
+            <span className="admin-chip">RESIDENT CONTROL</span>
             <h1>
-              Manage <span className="highlight">EcoCycle Users</span>
+              Manage <span className="highlight">EcoCycle Residents</span>
             </h1>
-            <p>Review user roles, reward points, districts, and account status.</p>
+            <p>Review resident reward points, districts, and account status.</p>
           </div>
         </section>
 
         <section className="users-card">
           <div className="card-header">
             <div>
-              <h2>User Management</h2>
-              <p>Monitor and manage all user accounts and take administrative actions.</p>
+              <h2>Resident Management</h2>
+              <p>Monitor and manage all resident accounts and take administrative actions.</p>
             </div>
 
-            <button className="add-button" onClick={handleAddClick}>+ Add User</button>
+            <button className="add-button" onClick={handleAddClick}>+ Add Resident</button>
           </div>
 
           {error && (
@@ -371,17 +375,6 @@ export default function AdminUsersPage() {
                 />
               </div>
               <div className="form-row">
-                <label>Role</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                >
-                  <option value="resident">Resident</option>
-                  <option value="collector">Collector</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div className="form-row">
                 <label>Points</label>
                 <input
                   type="number"
@@ -400,7 +393,7 @@ export default function AdminUsersPage() {
                 />
               </div>
               <div className="form-actions">
-                <button className="action-button" onClick={handleSaveUser}>{editingId !== null ? "Save Changes" : "Add User"}</button>
+                <button className="action-button" onClick={handleSaveUser}>{editingId !== null ? "Save Changes" : "Add Resident"}</button>
                 <button className="action-button action-button--secondary" onClick={handleCancel}>Cancel</button>
               </div>
             </div>
@@ -412,7 +405,6 @@ export default function AdminUsersPage() {
               <span>NIC</span>
               <span>EMAIL</span>
               <span>PHONE</span>
-              <span>ROLE</span>
               <span>DISTRICT</span>
               <span>RESIDENCES</span>
               <span>POINTS</span>
@@ -420,9 +412,9 @@ export default function AdminUsersPage() {
             </div>
 
             {loading ? (
-              <div style={{ padding: '2rem', textAlign: 'center' }}>Loading users...</div>
+              <div style={{ padding: '2rem', textAlign: 'center' }}>Loading residents...</div>
             ) : userList.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center' }}>No users found.</div>
+              <div style={{ padding: '2rem', textAlign: 'center' }}>No residents found.</div>
             ) : (
               userList.map((user) => (
                 <div className="users-row" key={user.id}>
@@ -433,9 +425,8 @@ export default function AdminUsersPage() {
                   <span>{user.nic}</span>
                   <span>{user.email}</span>
                   <span>{user.phone}</span>
-                  <span style={{ textTransform: 'capitalize' }}>{user.role}</span>
                   <span>{user.district}</span>
-                  <span>{user.residences}</span>
+                  <span>{(user.residences || 0).toLocaleString()}</span>
                   <span>{(user.points || 0).toLocaleString()}</span>
                   <span className="action-buttons">
                     <button className="action-button" onClick={() => handleEditClick(user)}>Edit</button>
@@ -747,7 +738,7 @@ export default function AdminUsersPage() {
 
         .users-row {
           display: grid;
-          grid-template-columns: 1.5fr 1fr 1.5fr 1.2fr 0.8fr 1fr 1fr 1fr 0.8fr;
+          grid-template-columns: 1.5fr 1fr 1.5fr 1.2fr 1fr 1fr 1fr 0.8fr;
           gap: 12px;
           align-items: center;
           padding: 18px 16px;
