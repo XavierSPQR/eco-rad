@@ -145,10 +145,16 @@ export default function ResidentLayout({ children }: { children: React.ReactNode
 
   // ── Auth guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!loading && !user) {
-      router.push("/auth?role=resident");
+    if (!loading) {
+      if (!user) {
+        router.push("/auth?role=resident");
+      } else if (profile && profile.role !== "resident") {
+        // Redirect to their correct dashboard
+        if (profile.role === "collector") router.replace("/collector");
+        else if (profile.role === "admin") router.replace("/admin/overview");
+      }
     }
-  }, [user, loading, router]);
+  }, [user, profile, loading, router]);
 
   // ── Notification count listener ─────────────────────────────────────────────
   useEffect(() => {
