@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 void useEffect;
 void useRef;
@@ -146,7 +147,7 @@ function WasteChart() {
 
 // ── Progress ring ─────────────────────────────────────────────────────────────
 
-function ProgressRing({ pct }: { pct: number }) {
+function ProgressRing({ pct, badgeLevel }: { pct: number; badgeLevel: string }) {
   const r = 54, circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
 
@@ -166,7 +167,7 @@ function ProgressRing({ pct }: { pct: number }) {
         To next badge
       </text>
       <text x="70" y="95" textAnchor="middle" fill="rgba(255,255,255,0.75)" fontSize="9" fontFamily="DM Sans, sans-serif">
-        Green Champion
+        {badgeLevel}
       </text>
     </svg>
   );
@@ -175,6 +176,14 @@ function ProgressRing({ pct }: { pct: number }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ResidentDashboard() {
+  const { profile, loading } = useAuth();
+
+  const displayName = loading ? "" : (profile?.fullName || "Resident");
+  const district = profile?.district || "";
+  const points = profile?.points?.toLocaleString() || "0";
+  const badgeProgress = profile?.badgeProgress ?? 0;
+  const badgeLevel = profile?.badgeLevel || "Green Contributor";
+
   return (
     <div className="rd-root">
 
@@ -184,12 +193,14 @@ export default function ResidentDashboard() {
         <div className="rd-banner-blob rd-banner-blob--2" />
 
         <div className="rd-banner-left">
-          <p className="rd-banner-meta">CONTRIBUTOR · NUGEGODA</p>
+          <p className="rd-banner-meta">
+            CONTRIBUTOR {district && `· ${district.toUpperCase()}`}
+          </p>
           <h1 className="rd-banner-heading">
-            Welcome back, <span className="rd-banner-name">Nimal!</span>
+            Welcome back, <span className="rd-banner-name">{displayName}{!loading && "!"}</span>
           </h1>
           <p className="rd-banner-sub">
-            You&apos;re 78% of the way to your next badge. Keep recycling — every kilogram
+            You&apos;re {badgeProgress}% of the way to your next badge. Keep recycling — every kilogram
             counts toward a cleaner Sri Lanka.
           </p>
           <div className="rd-banner-pills">
@@ -197,19 +208,19 @@ export default function ResidentDashboard() {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
-              Next Badge: <strong>Green Champion</strong>
+              Next Badge: <strong>{badgeLevel}</strong>
             </span>
             <span className="rd-pill rd-pill--pts">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10 2l1.5 4.5H16l-3.75 2.75 1.5 4.5L10 11l-3.75 2.75 1.5-4.5L4 6.5h4.5z" />
               </svg>
-              2,450 <small>pts</small>
+              {points} <small>pts</small>
             </span>
           </div>
         </div>
 
         <div className="rd-banner-ring">
-          <ProgressRing pct={78} />
+          <ProgressRing pct={badgeProgress} badgeLevel={badgeLevel} />
         </div>
       </div>
 
