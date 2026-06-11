@@ -5,7 +5,33 @@ import { RoleGuard } from "@/components/RoleGuard";
 
 
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  doc,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
+
+interface User {
+  id: string;
+  name: string; // Mapped from fullName
+  email: string;
+  phone: string;
+  address: string;
+  district: string;
+  nic: string;
+  role: string;
+  points: number;
+  residences: number;
+  badgeLevel: string;
+  badgeProgress: number;
+  createdAt?: Timestamp;
+}
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -26,53 +52,129 @@ const sidebarItems = [
   { label: "Reports", href: "/admin/report", icon: "📈" },
 ];
 
-const users = [
-  { name: "Anushka Jayawardena", nic: "900000000V", email: "anushka@ecocycle.lk", phone: "+94-771-234567", address: "123 Green St", district: "Colombo", points: "4,820", residences: "3" },
-  { name: "Nimal Perera", nic: "901234567V", email: "nimal@ecocycle.lk", phone: "+94-771-234568", address: "456 River Ave", district: "Kandy", points: "2,450", residences: "1" },
-  { name: "Tharindu Bandara", nic: "902345678V", email: "tharindu@ecocycle.lk", phone: "+94-771-234569", address: "789 Beach Rd", district: "Galle", points: "2,380", residences: "2" },
-  { name: "Dilani Senanayake", nic: "903456789V", email: "dilani@ecocycle.lk", phone: "+94-771-234570", address: "321 Park Lane", district: "Jaffna", points: "2,110", residences: "1" },
-  { name: "Ruwan Madushanka", nic: "904567890V", email: "ruwan@ecocycle.lk", phone: "+94-771-234571", address: "654 Hill Road", district: "Matara", points: "1,990", residences: "4" },
-];
-
-
 export default function AdminUsersPage() {
   const pathname = usePathname();
-  const [userList, setUserList] = useState(users);
-  const [formData, setFormData] = useState({ name: "", nic: "", email: "", phone: "", address: "", district: "", points: "", residences: "" });
+  const [userList, setUserList] = useState<User[]>([]);
+  const [formData, setFormData] = useState({
+    name: "",
+    nic: "",
+    email: "",
+    phone: "",
+    address: "",
+    district: "",
+    role: "resident",
+    points: 0,
+    residences: 0,
+  });
 
-
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        const querySnapshot = await getDocs(collection(db, "users"));
+        const usersData = querySnapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            name: data.fullName || "", // Map fullName from Firestore to name in UI
+          };
+        }) as User[];
+        setUserList(usersData);
+        setError(null);
+      } catch (err) {
+        console.error("Error fetching users:", err);
+        setError("Failed to fetch users. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, []);
+
   const handleAddClick = () => {
-    setEditingIndex(null);
-    setFormData({ name: "", nic: "", email: "", phone: "", address: "", district: "", points: "", residences: "" });
-
+    setEditingId(null);
+    setFormData({
+      name: "",
+      nic: "",
+      email: "",
+      phone: "",
+      address: "",
+      district: "",
+      role: "resident",
+      points: 0,
+      residences: 0,
+    });
     setIsFormOpen(true);
   };
 
-  const handleEditClick = (index: number) => {
-    setEditingIndex(index);
-    setFormData(userList[index]);
+  const handleEditClick = (user: User) => {
+    setEditingId(user.id);
+    setFormData({
+      name: user.name || "",
+      nic: user.nic || "",
+      email: user.email || "",
+      phone: user.phone || "",
+      address: user.address || "",
+      district: user.district || "",
+      role: user.role || "resident",
+      points: user.points || 0,
+      residences: user.residences || 0,
+    });
     setIsFormOpen(true);
   };
 
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     if (!formData.name.trim()) return;
 
-    if (editingIndex !== null) {
-      const updated = [...userList];
-      updated[editingIndex] = { ...formData };
-      setUserList(updated);
-    } else {
-      setUserList([{ ...formData }, ...userList]);
-    }
+    try {
+      // Map name back to fullName for Firestore
+      const { name, ...otherData } = formData;
+      const firestoreData = {
+        ...otherData,
+        fullName: name,
+        points: Number(formData.points),
+        residences: Number(formData.residences),
+      };
 
-    setIsFormOpen(false);
+      if (editingId) {
+        const userDoc = doc(db, "users", editingId);
+        await updateDoc(userDoc, firestoreData);
+
+        setUserList((prev) =>
+          prev.map((u) =>
+            u.id === editingId
+              ? { ...u, name: name, ...otherData, points: Number(formData.points), residences: Number(formData.residences) }
+              : u
+          )
+        );
+      } else {
+        const newUser = {
+          ...firestoreData,
+          badgeLevel: "Green Contributor",
+          badgeProgress: 0,
+          createdAt: serverTimestamp(),
+        };
+        const docRef = await addDoc(collection(db, "users"), newUser);
+        setUserList((prev) => [{ id: docRef.id, name: name, ...otherData, points: Number(formData.points), residences: Number(formData.residences) } as User, ...prev]);
+      }
+      setIsFormOpen(false);
+      setError(null);
+    } catch (err) {
+      console.error("Error saving user:", err);
+      setError("Failed to save user. Please try again.");
+    }
   };
 
   const handleCancel = () => {
     setIsFormOpen(false);
+    setError(null);
   };
 
   return (
@@ -194,12 +296,18 @@ export default function AdminUsersPage() {
         <section className="users-card">
           <div className="card-header">
             <div>
-              <h2>Resident Management</h2>
+              <h2>User Management</h2>
               <p>Monitor and manage all user accounts and take administrative actions.</p>
             </div>
 
             <button className="add-button" onClick={handleAddClick}>+ Add User</button>
           </div>
+
+          {error && (
+            <div className="error-message" style={{ color: 'red', marginBottom: '1rem', padding: '10px', background: '#fee2e2', borderRadius: '8px' }}>
+              {error}
+            </div>
+          )}
 
           {isFormOpen && (
             <div className="user-form-card">
@@ -263,25 +371,36 @@ export default function AdminUsersPage() {
                 />
               </div>
               <div className="form-row">
+                <label>Role</label>
+                <select
+                  value={formData.role}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                >
+                  <option value="resident">Resident</option>
+                  <option value="collector">Collector</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="form-row">
                 <label>Points</label>
                 <input
-                  type="text"
+                  type="number"
                   value={formData.points}
-                  onChange={(e) => setFormData({ ...formData, points: e.target.value })}
-                  placeholder="e.g. 4,820"
+                  onChange={(e) => setFormData({ ...formData, points: Number(e.target.value) })}
+                  placeholder="e.g. 4820"
                 />
               </div>
               <div className="form-row">
                 <label>No. of Residences</label>
                 <input
-                  type="text"
+                  type="number"
                   value={formData.residences}
-                  onChange={(e) => setFormData({ ...formData, residences: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, residences: Number(e.target.value) })}
                   placeholder="e.g. 1"
                 />
               </div>
               <div className="form-actions">
-                <button className="action-button" onClick={handleSaveUser}>{editingIndex !== null ? "Save Changes" : "Add User"}</button>
+                <button className="action-button" onClick={handleSaveUser}>{editingId !== null ? "Save Changes" : "Add User"}</button>
                 <button className="action-button action-button--secondary" onClick={handleCancel}>Cancel</button>
               </div>
             </div>
@@ -293,34 +412,37 @@ export default function AdminUsersPage() {
               <span>NIC</span>
               <span>EMAIL</span>
               <span>PHONE</span>
-              <span>ADDRESS</span>
-              <span>NO. OF RESIDENCES</span>
+              <span>ROLE</span>
+              <span>DISTRICT</span>
+              <span>RESIDENCES</span>
               <span>POINTS</span>
-
               <span>ACTION</span>
             </div>
 
-
-            {userList.map((user, index) => (
-              <div className="users-row" key={`${user.name}-${index}`}>
-                <span>
-                  <strong>{user.name}</strong>
-                </span>
-                <span>{user.nic}</span>
-                <span>{user.email}</span>
-
-                <span>{user.phone}</span>
-
-
-                <span>{user.address}</span>
-                <span>{user.residences}</span>
-                <span>{user.points}</span>
-
-                <span className="action-buttons">
-                  <button className="action-button" onClick={() => handleEditClick(index)}>Edit</button>
-                </span>
-              </div>
-            ))}
+            {loading ? (
+              <div style={{ padding: '2rem', textAlign: 'center' }}>Loading users...</div>
+            ) : userList.length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center' }}>No users found.</div>
+            ) : (
+              userList.map((user) => (
+                <div className="users-row" key={user.id}>
+                  <span>
+                    <strong>{user.name}</strong>
+                    <small style={{ fontSize: '0.7rem', color: '#6b7280' }}>{user.address}</small>
+                  </span>
+                  <span>{user.nic}</span>
+                  <span>{user.email}</span>
+                  <span>{user.phone}</span>
+                  <span style={{ textTransform: 'capitalize' }}>{user.role}</span>
+                  <span>{user.district}</span>
+                  <span>{user.residences}</span>
+                  <span>{(user.points || 0).toLocaleString()}</span>
+                  <span className="action-buttons">
+                    <button className="action-button" onClick={() => handleEditClick(user)}>Edit</button>
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </section>
       </main>
@@ -625,8 +747,8 @@ export default function AdminUsersPage() {
 
         .users-row {
           display: grid;
-          grid-template-columns: 1.5fr 1fr 1.5fr 1.2fr 1.8fr 1.2fr 1fr 1.2fr;
-          gap: 16px;
+          grid-template-columns: 1.5fr 1fr 1.5fr 1.2fr 0.8fr 1fr 1fr 1fr 0.8fr;
+          gap: 12px;
           align-items: center;
           padding: 18px 16px;
           border-radius: 18px;
