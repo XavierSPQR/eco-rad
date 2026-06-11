@@ -1,101 +1,45 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { collection, query, where, onSnapshot, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
-void useEffect;
-void useRef;
+type WasteType = "Recyclable" | "Organic" | "E-Waste";
 
-// ── Chart data ────────────────────────────────────────────────────────────────
-
-const MONTHS = ["Dec", "Jan", "Feb", "Mar", "Apr", "May"];
-
-const CHART_DATA = {
-  recyclable: [14, 15, 16, 18, 22, 30],
-  organic:    [12, 13, 14, 15, 17, 20],
-  eWaste:     [1,  2,  2,  3,  3,  4 ],
+type WasteCollection = {
+  id: string;
+  userId: string;
+  wasteType: WasteType;
+  weight: number;
+  pointsEarned: number;
+  collectedAt: Timestamp | null;
+  collectorId: string;
 };
-
-// ── Stat cards ────────────────────────────────────────────────────────────────
-
-const STATS = [
-  {
-    label: "Total Waste",
-    value: "184.2 kg",
-    color: "#2e7d32",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="1 4 1 10 7 10" />
-        <path d="M3.51 15a9 9 0 1 0 .49-4.95" />
-      </svg>
-    ),
-  },
-  {
-    label: "Organic",
-    value: "62.4 kg",
-    color: "#388e3c",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 22V12M12 12C12 7 7 4 2 6c0 5 3 9 10 6M12 12c0-5 5-8 10-6-1 5-4 8-10 6" />
-      </svg>
-    ),
-  },
-  {
-    label: "Recyclable",
-    value: "98.6 kg",
-    color: "#43a047",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="1 4 1 10 7 10" /><polyline points="23 20 23 14 17 14" />
-        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" />
-      </svg>
-    ),
-  },
-  {
-    label: "E-Waste",
-    value: "23.2 kg",
-    color: "#66bb6a",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="7" width="20" height="14" rx="2" />
-        <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-        <line x1="12" y1="12" x2="12" y2="16" /><line x1="10" y1="14" x2="14" y2="14" />
-      </svg>
-    ),
-  },
-  {
-    label: "Monthly Points",
-    value: "+1,240",
-    color: "#2e7d32",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-      </svg>
-    ),
-  },
-];
 
 // ── SVG Line Chart ────────────────────────────────────────────────────────────
 
-function WasteChart() {
+function WasteChart({ months, data }: { months: string[], data: { recyclable: number[], organic: number[], eWaste: number[] } }) {
   const W = 620, H = 200, PAD = { top: 16, right: 16, bottom: 32, left: 36 };
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
 
-  const allVals = [...CHART_DATA.recyclable, ...CHART_DATA.organic, ...CHART_DATA.eWaste];
-  const maxVal = Math.ceil(Math.max(...allVals) / 8) * 8;
-  const yTicks = [0, 8, 16, 24, 32].filter((v) => v <= maxVal);
+  const allVals = [...data.recyclable, ...data.organic, ...data.eWaste];
+  const maxVal = Math.ceil(Math.max(...allVals, 8) / 8) * 8;
 
-  const xPos = (i: number) => PAD.left + (i / (MONTHS.length - 1)) * innerW;
+  const step = maxVal / 8;
+  const yTicks = Array.from({ length: 9 }, (_, i) => i * step);
+
+  const xPos = (i: number) => PAD.left + (i / (months.length - 1)) * innerW;
   const yPos = (v: number) => PAD.top + innerH - (v / maxVal) * innerH;
 
-  function makePath(data: number[]) {
-    return data.map((v, i) => `${i === 0 ? "M" : "L"}${xPos(i)},${yPos(v)}`).join(" ");
+  function makePath(lineData: number[]) {
+    return lineData.map((v, i) => `${i === 0 ? "M" : "L"}${xPos(i)},${yPos(v)}`).join(" ");
   }
 
-  function makeArea(data: number[]) {
-    const line = makePath(data);
-    const base = `L${xPos(data.length - 1)},${yPos(0)} L${xPos(0)},${yPos(0)} Z`;
+  function makeArea(areaData: number[]) {
+    const line = makePath(areaData);
+    const base = `L${xPos(areaData.length - 1)},${yPos(0)} L${xPos(0)},${yPos(0)} Z`;
     return line + " " + base;
   }
 
@@ -127,20 +71,20 @@ function WasteChart() {
       ))}
 
       {/* X-axis labels */}
-      {MONTHS.map((m, i) => (
+      {months.map((m, i) => (
         <text key={m} x={xPos(i)} y={H - 6} textAnchor="middle"
           fontSize="10" fill="#9ca3af">{m}</text>
       ))}
 
       {/* Areas */}
-      <path d={makeArea(CHART_DATA.recyclable)} fill="url(#gr)" />
-      <path d={makeArea(CHART_DATA.organic)}    fill="url(#go)" />
-      <path d={makeArea(CHART_DATA.eWaste)}     fill="url(#ge)" />
+      <path d={makeArea(data.recyclable)} fill="url(#gr)" />
+      <path d={makeArea(data.organic)}    fill="url(#go)" />
+      <path d={makeArea(data.eWaste)}     fill="url(#ge)" />
 
       {/* Lines */}
-      <path d={makePath(CHART_DATA.recyclable)} fill="none" stroke="#2e7d32" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d={makePath(CHART_DATA.organic)}    fill="none" stroke="#66bb6a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d={makePath(CHART_DATA.eWaste)}     fill="none" stroke="#795548" strokeWidth="2"   strokeLinecap="round" strokeLinejoin="round" />
+      <path d={makePath(data.recyclable)} fill="none" stroke="#2e7d32" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={makePath(data.organic)}    fill="none" stroke="#66bb6a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={makePath(data.eWaste)}     fill="none" stroke="#795548" strokeWidth="2"   strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -176,7 +120,166 @@ function ProgressRing({ pct, badgeLevel }: { pct: number; badgeLevel: string }) 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ResidentDashboard() {
-  const { profile, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
+  const [wasteCollections, setWasteCollections] = useState<WasteCollection[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const wasteQuery = query(
+      collection(db, "wasteCollections"),
+      where("userId", "==", user.uid)
+    );
+
+    const unsub = onSnapshot(wasteQuery, (snapshot) => {
+      setWasteCollections(
+        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as WasteCollection))
+      );
+    }, (error) => {
+      console.error("Error fetching waste collections:", error);
+    });
+
+    return () => unsub();
+  }, [user]);
+
+  const stats = useMemo(() => {
+    const total = wasteCollections.reduce((acc, curr) => acc + curr.weight, 0);
+    const organic = wasteCollections
+      .filter((w) => w.wasteType === "Organic")
+      .reduce((acc, curr) => acc + curr.weight, 0);
+    const recyclable = wasteCollections
+      .filter((w) => w.wasteType === "Recyclable")
+      .reduce((acc, curr) => acc + curr.weight, 0);
+    const eWaste = wasteCollections
+      .filter((w) => w.wasteType === "E-Waste")
+      .reduce((acc, curr) => acc + curr.weight, 0);
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthlyPoints = wasteCollections
+      .filter((w) => {
+        if (!w.collectedAt) return false;
+        const d = w.collectedAt.toDate();
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      })
+      .reduce((acc, curr) => acc + curr.pointsEarned, 0);
+
+    return [
+      {
+        label: "Total Waste",
+        value: `${total.toFixed(1)} kg`,
+        color: "#2e7d32",
+        icon: (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 .49-4.95" />
+          </svg>
+        ),
+      },
+      {
+        label: "Organic",
+        value: `${organic.toFixed(1)} kg`,
+        color: "#388e3c",
+        icon: (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22V12M12 12C12 7 7 4 2 6c0 5 3 9 10 6M12 12c0-5 5-8 10-6-1 5-4 8-10 6" />
+          </svg>
+        ),
+      },
+      {
+        label: "Recyclable",
+        value: `${recyclable.toFixed(1)} kg`,
+        color: "#43a047",
+        icon: (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="1 4 1 10 7 10" /><polyline points="23 20 23 14 17 14" />
+            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" />
+          </svg>
+        ),
+      },
+      {
+        label: "E-Waste",
+        value: `${eWaste.toFixed(1)} kg`,
+        color: "#66bb6a",
+        icon: (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="7" width="20" height="14" rx="2" />
+            <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+            <line x1="12" y1="12" x2="12" y2="16" /><line x1="10" y1="14" x2="14" y2="14" />
+          </svg>
+        ),
+      },
+      {
+        label: "Monthly Points",
+        value: `+${monthlyPoints.toLocaleString()}`,
+        color: "#2e7d32",
+        icon: (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+          </svg>
+        ),
+      },
+    ];
+  }, [wasteCollections]);
+
+  const chartData = useMemo(() => {
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const labels: string[] = [];
+    const now = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      labels.push(monthNames[d.getMonth()]);
+    }
+
+    const recyclable = new Array(6).fill(0);
+    const organic = new Array(6).fill(0);
+    const eWaste = new Array(6).fill(0);
+
+    wasteCollections.forEach((w) => {
+      if (!w.collectedAt) return;
+      const d = w.collectedAt.toDate();
+      const diffMonths = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+      if (diffMonths >= 0 && diffMonths < 6) {
+        const index = 5 - diffMonths;
+        if (w.wasteType === "Recyclable") recyclable[index] += w.weight;
+        else if (w.wasteType === "Organic") organic[index] += w.weight;
+        else if (w.wasteType === "E-Waste") eWaste[index] += w.weight;
+      }
+    });
+
+    return { labels, recyclable, organic, eWaste };
+  }, [wasteCollections]);
+
+  const impact = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const thisYearCollections = wasteCollections.filter((w) => {
+      if (!w.collectedAt) return false;
+      return w.collectedAt.toDate().getFullYear() === currentYear;
+    });
+
+    const recyclable = thisYearCollections
+      .filter((w) => w.wasteType === "Recyclable")
+      .reduce((acc, curr) => acc + curr.weight, 0);
+    const organic = thisYearCollections
+      .filter((w) => w.wasteType === "Organic")
+      .reduce((acc, curr) => acc + curr.weight, 0);
+    const eWaste = thisYearCollections
+      .filter((w) => w.wasteType === "E-Waste")
+      .reduce((acc, curr) => acc + curr.weight, 0);
+
+    const plasticDiverted = recyclable * 0.476;
+    const co2Saved = recyclable * 2.0 + organic * 0.9 + eWaste * 1.3;
+    const treesEquivalent = co2Saved / 24;
+
+    return {
+      co2: co2Saved.toFixed(0),
+      trees: treesEquivalent.toFixed(0),
+      plastic: plasticDiverted.toFixed(0),
+    };
+  }, [wasteCollections]);
 
   const displayName = loading ? "" : (profile?.fullName || "Resident");
   const district = profile?.district || "";
@@ -226,7 +329,7 @@ export default function ResidentDashboard() {
 
       {/* ── Stat cards ── */}
       <div className="rd-stats">
-        {STATS.map((s, i) => (
+        {stats.map((s, i) => (
           <div className="rd-stat-card" key={s.label} style={{ animationDelay: `${i * 0.07}s` }}>
             <div className="rd-stat-top">
               <span className="rd-stat-icon" style={{ color: s.color }}>{s.icon}</span>
@@ -256,7 +359,7 @@ export default function ResidentDashboard() {
               <span className="rd-legend-item"><span style={{ background: "#795548" }} />E-Waste</span>
             </div>
           </div>
-          <WasteChart />
+          <WasteChart months={chartData.labels} data={chartData} />
         </div>
 
         {/* Community impact */}
@@ -267,17 +370,17 @@ export default function ResidentDashboard() {
           <div className="rd-impact-rows">
             <div className="rd-impact-row">
               <span className="rd-impact-label">CO₂ saved</span>
-              <span className="rd-impact-val">284 kg</span>
+              <span className="rd-impact-val">{impact.co2} kg</span>
             </div>
             <div className="rd-impact-divider" />
             <div className="rd-impact-row">
               <span className="rd-impact-label">Trees equivalent</span>
-              <span className="rd-impact-val">12</span>
+              <span className="rd-impact-val">{impact.trees}</span>
             </div>
             <div className="rd-impact-divider" />
             <div className="rd-impact-row">
               <span className="rd-impact-label">Plastic diverted</span>
-              <span className="rd-impact-val">47 kg</span>
+              <span className="rd-impact-val">{impact.plastic} kg</span>
             </div>
           </div>
         </div>
