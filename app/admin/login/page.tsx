@@ -14,12 +14,6 @@ const GoogleIcon = () => (
   </svg>
 )
 
-const FacebookIcon = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18" fill="#1877F2" xmlns="http://www.w3.org/2000/svg">
-    <path d="M22.675 0H1.325C.593 0 0 .593 0 1.326v21.348C0 23.407.593 24 1.325 24H12.82v-9.294H9.692v-3.622h3.128V8.413c0-3.1 1.893-4.788 4.657-4.788 1.325 0 2.466.099 2.797.143v3.24l-1.918.001c-1.504 0-1.795.716-1.795 1.765v2.313h3.587l-.467 3.622h-3.12V24h6.116C23.407 24 24 23.407 24 22.674V1.326C24 .593 23.407 0 22.675 0z"/>
-  </svg>
-)
-
 export default function AdminLoginPage(){
   const router = useRouter()
 
@@ -107,7 +101,6 @@ export default function AdminLoginPage(){
 
             <div className={styles.buttonContainer}>
               <button type="submit" className={styles.signInButton} disabled={isLoading} aria-busy={isLoading}>{isLoading? 'Signing in...':'Sign in'}</button>
-              <Link href="#" className={styles.signUpButton}>Sign Up</Link>
             </div>
           </form>
 
@@ -121,10 +114,6 @@ export default function AdminLoginPage(){
             <button type="button" className={styles.socialButton} onClick={()=>console.log('google')}> 
               <span className={styles.socialIcon}><GoogleIcon/></span>
               <span>Google</span>
-            </button>
-            <button type="button" className={styles.socialButton} onClick={()=>console.log('facebook')}> 
-              <span className={styles.socialIcon}><FacebookIcon/></span>
-              <span>Facebook</span>
             </button>
           </div>
         </div>
