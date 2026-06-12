@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   collection,
   query,
@@ -29,6 +29,8 @@ type PickupRequest = {
   status: "pending" | "scheduled" | "completed" | "cancelled";
   requestedDate: Timestamp | null;
   createdAt: Timestamp | null;
+  collectorId?: string;
+  updatedAt?: Timestamp | null;
 };
 
 type WasteType = "Recyclable" | "Organic" | "E-Waste";
@@ -41,8 +43,11 @@ const POINTS_CONFIG: Record<WasteType, number> = {
 
 export default function CollectorTasksPage() {
   const { user, profile } = useAuth();
-  const [tasks, setTasks] = useState<PickupRequest[]>([]);
+  const [pendingTasks, setPendingTasks] = useState<PickupRequest[]>([]);
+  const [completedTasksToday, setCompletedTasksToday] = useState<PickupRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "completed">("all");
 
   // Start live tracking
   useLiveTracking(user, profile);
@@ -54,26 +59,61 @@ export default function CollectorTasksPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const q = query(
+    if (!user) return;
+
+    // Listen to pending tasks
+    const qPending = query(
       collection(db, "pickupRequests"),
       where("status", "==", "pending"),
       orderBy("requestedDate", "asc")
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribePending = onSnapshot(qPending, (snapshot) => {
       const taskList = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as PickupRequest[];
-      setTasks(taskList);
+      setPendingTasks(taskList);
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching tasks:", error);
+      console.error("Error fetching pending tasks:", error);
       setLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
+    // Listen to completed tasks by this collector
+    // We filter "today" in memory to avoid needing a complex composite index for now,
+    // or we can use a simpler query.
+    const qCompleted = query(
+      collection(db, "pickupRequests"),
+      where("status", "==", "completed"),
+      where("collectorId", "==", user.uid)
+    );
+
+    const unsubscribeCompleted = onSnapshot(qCompleted, (snapshot) => {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      const taskList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as PickupRequest[];
+
+      // Filter for today's completed tasks
+      const todayList = taskList.filter(task => {
+        const updateDate = task.updatedAt?.toDate();
+        return updateDate && updateDate >= startOfToday;
+      });
+
+      setCompletedTasksToday(todayList);
+    }, (error) => {
+      console.error("Error fetching completed tasks:", error);
+    });
+
+    return () => {
+      unsubscribePending();
+      unsubscribeCompleted();
+    };
+  }, [user]);
 
   const handleConfirmCollection = async () => {
     if (!selectedTask || !weight || isSubmitting || !user) return;
@@ -100,6 +140,7 @@ export default function CollectorTasksPage() {
       const requestRef = doc(db, "pickupRequests", selectedTask.id);
       batch.update(requestRef, {
         status: "completed",
+        collectorId: user.uid,
         updatedAt: serverTimestamp()
       });
 
@@ -123,6 +164,42 @@ export default function CollectorTasksPage() {
     }
   };
 
+  const filteredTasks = useMemo(() => {
+    let combined = [...pendingTasks];
+    if (filterStatus === "all" || filterStatus === "completed") {
+      combined = [...combined, ...completedTasksToday];
+    }
+
+    // If filter is specific
+    if (filterStatus === "pending") {
+      combined = [...pendingTasks];
+    } else if (filterStatus === "completed") {
+      combined = [...completedTasksToday];
+    }
+
+    return combined
+      .filter(task =>
+        task.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        task.description.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        // Sort by date, pending first or just by date
+        const dateA = a.requestedDate?.toDate() || new Date(0);
+        const dateB = b.requestedDate?.toDate() || new Date(0);
+        return dateA.getTime() - dateB.getTime();
+      });
+  }, [pendingTasks, completedTasksToday, searchTerm, filterStatus]);
+
+  const progress = useMemo(() => {
+    const completedCount = completedTasksToday.length;
+    const total = completedCount + pendingTasks.length;
+    return total > 0 ? Math.round((completedCount / total) * 100) : 0;
+  }, [completedTasksToday, pendingTasks]);
+
+  const getInitials = (name: string) => {
+    return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  };
+
   return (
     <RoleGuard allowedRole="collector">
     <div className="flex min-h-screen bg-[#F1F5F0] font-sans">
@@ -141,7 +218,7 @@ export default function CollectorTasksPage() {
             Dashboard
           </Link>
           <Link href="/collector/tasks" className="flex items-center gap-3 px-4 py-2 text-sm font-medium bg-[#55B56F] text-white rounded-[12px] shadow-lg shadow-[#55B56F]/20">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 ２ 4-4"></path></svg>
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
             Tasks
           </Link>
           <Link href="/collector/notification" className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-white rounded-lg transition-colors">
@@ -160,22 +237,13 @@ export default function CollectorTasksPage() {
         <div className="text-gray-400 text-sm mb-4 font-semibold uppercase tracking-wider">Collector-Task</div>
 
         {/* Top Bar */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="relative w-[450px]">
-            <span className="absolute inset-y-0 left-4 flex items-center text-gray-400">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-            </span>
-            <input
-              type="text"
-              placeholder="Search collections, complaints, trucks..."
-              className="w-full pl-11 pr-4 py-2.5 bg-white rounded-full text-[13px] focus:outline-none shadow-sm border-none placeholder:text-gray-400"
-            />
-          </div>
-
+        <div className="flex justify-end items-center mb-6">
           <div className="flex items-center gap-3 bg-white/60 px-4 py-1.5 rounded-full border border-white/40 shadow-sm">
-            <div className="w-9 h-9 bg-[#2E7D32] rounded-full flex items-center justify-center text-white text-xs font-bold shadow-inner">SF</div>
+            <div className="w-9 h-9 bg-[#2E7D32] rounded-full flex items-center justify-center text-white text-xs font-bold shadow-inner">
+              {profile?.fullName ? getInitials(profile.fullName) : "C"}
+            </div>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-gray-800 leading-tight">Sanjeewa Fernando</span>
+              <span className="text-sm font-bold text-gray-800 leading-tight">{profile?.fullName || "Collector"}</span>
               <span className="text-[10px] text-gray-500 font-medium tracking-wide">Collector</span>
             </div>
           </div>
@@ -188,20 +256,9 @@ export default function CollectorTasksPage() {
             <div className="relative z-10">
               <span className="text-[11px] font-bold text-[#2E7D32] uppercase tracking-[0.2em] mb-1 block">Collector</span>
               <h1 className="text-[36px] font-bold text-gray-800 leading-tight">
-                Hello,<span className="text-[#55B56F]">Sanjeewa!</span>
+                Hello,<span className="text-[#55B56F]">{profile?.fullName?.split(" ")[0] || "Collector"}!</span>
               </h1>
               <p className="text-gray-500 text-sm font-medium mt-1">Working with Truck LK-4521 · Zone Colombo South</p>
-
-              <div className="flex items-center gap-3 mt-5">
-                <div className="bg-[#BCE4C0] px-3 py-1 rounded-full flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[#2E7D32]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"></path></svg>
-                  <span className="text-[11px] font-bold text-[#2E7D32]">Rank #4 this month</span>
-                </div>
-                <div className="bg-[#BCE4C0] px-3 py-1 rounded-full flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[#2E7D32]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 6l-9.5 9.5-5-5L1 18"></path></svg>
-                  <span className="text-[11px] font-bold text-[#2E7D32]">Score 92.4</span>
-                </div>
-              </div>
             </div>
 
             <div className="relative w-40 h-40 flex items-center justify-center">
@@ -211,12 +268,13 @@ export default function CollectorTasksPage() {
                 <circle
                   cx="80" cy="80" r="70"
                   stroke="#55B56F" strokeWidth="12" fill="transparent"
-                  strokeDasharray="440" strokeDashoffset={440 * (1 - 0.82)}
+                  strokeDasharray="440" strokeDashoffset={440 * (1 - progress / 100)}
                   strokeLinecap="round"
+                  className="transition-all duration-500"
                 />
               </svg>
               <div className="absolute flex flex-col items-center">
-                <span className="text-[32px] font-black text-gray-800 leading-none">82%</span>
+                <span className="text-[32px] font-black text-gray-800 leading-none">{progress}%</span>
                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Tasks</span>
                 <span className="text-[8px] font-bold text-gray-400 uppercase">Today</span>
               </div>
@@ -230,15 +288,27 @@ export default function CollectorTasksPage() {
 
               <div className="flex items-center gap-4">
                 <div className="relative bg-[#E9EEF4] rounded-full flex items-center px-4 py-2 gap-3 w-64 border border-gray-100">
-                  <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                  <input type="text" placeholder="search" className="bg-transparent text-sm w-full outline-none placeholder:text-gray-500" />
                   <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+                  <input
+                    type="text"
+                    placeholder="search"
+                    className="bg-transparent text-sm w-full outline-none placeholder:text-gray-500"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
                 </div>
 
-                <button className="flex items-center gap-2 text-gray-500 font-bold text-sm">
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"></path></svg>
-                  Filter
-                </button>
+                <div className="relative group">
+                  <button className="flex items-center gap-2 text-gray-500 font-bold text-sm bg-gray-50 px-4 py-2 rounded-xl hover:bg-gray-100 transition-colors">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"></path></svg>
+                    Filter: {filterStatus === "all" ? "All" : filterStatus === "pending" ? "Pending" : "Confirmed"}
+                  </button>
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 hidden group-hover:block z-20">
+                    <button onClick={() => setFilterStatus("all")} className="w-full text-left px-6 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">All Tasks</button>
+                    <button onClick={() => setFilterStatus("pending")} className="w-full text-left px-6 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Pending Only</button>
+                    <button onClick={() => setFilterStatus("completed")} className="w-full text-left px-6 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Confirmed Only</button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -257,11 +327,11 @@ export default function CollectorTasksPage() {
                   <tr>
                     <td colSpan={5} className="py-10 text-center text-gray-500">Loading tasks...</td>
                   </tr>
-                ) : tasks.length === 0 ? (
+                ) : filteredTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-gray-500">No pending tasks found.</td>
+                    <td colSpan={5} className="py-10 text-center text-gray-500">No tasks found.</td>
                   </tr>
-                ) : tasks.map((task) => (
+                ) : filteredTasks.map((task) => (
                   <tr key={task.id} className="group">
                     <td className="py-5 flex items-center gap-3">
                       <svg className="w-5 h-5 text-gray-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
@@ -272,17 +342,23 @@ export default function CollectorTasksPage() {
                       {task.requestedDate?.toDate().toLocaleDateString() || "N/A"}
                     </td>
                     <td className="py-5 text-center">
-                      <span className="bg-gradient-to-r from-[#F1883D] to-[#F37651] text-white text-[10px] font-bold px-4 py-1.5 rounded-full shadow-lg shadow-orange-500/20 capitalize">
-                        {task.status}
+                      <span className={`text-[10px] font-bold px-4 py-1.5 rounded-full shadow-lg capitalize ${
+                        task.status === 'pending'
+                        ? 'bg-gradient-to-r from-[#F1883D] to-[#F37651] text-white shadow-orange-500/20'
+                        : 'bg-gradient-to-r from-[#55B56F] to-[#2E7D32] text-white shadow-green-500/20'
+                      }`}>
+                        {task.status === 'completed' ? 'Confirmed' : task.status}
                       </span>
                     </td>
                     <td className="py-5 text-right">
-                      <button
-                        onClick={() => setSelectedTask(task)}
-                        className="bg-[#2E7D32] hover:bg-[#25632a] text-white text-[10px] font-bold px-5 py-1.5 rounded-full transition-colors"
-                      >
-                        Confirm
-                      </button>
+                      {task.status === 'pending' && (
+                        <button
+                          onClick={() => setSelectedTask(task)}
+                          className="bg-[#2E7D32] hover:bg-[#25632a] text-white text-[10px] font-bold px-5 py-1.5 rounded-full transition-colors"
+                        >
+                          Confirm
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

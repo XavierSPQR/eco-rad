@@ -1,0 +1,120 @@
+
+> eco-rad@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+✓ Ready in 524ms
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+
+○ Compiling /auth ...
+ GET /auth?role=collector 200 in 8.4s (next.js: 7.5s, application-code: 911ms)
+ GET /collector 200 in 818ms (next.js: 767ms, application-code: 51ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
+ GET /collector/tasks 200 in 895ms (next.js: 715ms, application-code: 180ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
+ GET /auth?role=collector 200 in 69ms (next.js: 4ms, application-code: 65ms)
+ GET /collector 200 in 38ms (next.js: 4ms, application-code: 34ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
+ GET /collector/tasks 200 in 77ms (next.js: 3ms, application-code: 74ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
+ GET /auth?role=collector 200 in 109ms (next.js: 6ms, application-code: 103ms)
+ GET /collector 200 in 40ms (next.js: 5ms, application-code: 34ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
+ GET /collector/tasks 200 in 134ms (next.js: 5ms, application-code: 130ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
+ GET /auth?role=collector 200 in 71ms (next.js: 5ms, application-code: 66ms)
+ GET /collector 200 in 38ms (next.js: 6ms, application-code: 32ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
+ GET /collector/tasks 200 in 100ms (next.js: 5ms, application-code: 95ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
+ GET /auth?role=collector 200 in 128ms (next.js: 3ms, application-code: 125ms)
+ GET /collector 200 in 41ms (next.js: 3ms, application-code: 38ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
+ GET /collector/tasks 200 in 77ms (next.js: 3ms, application-code: 74ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:31:17)
+  29 |       },
+  30 |       (error) => {
+> 31 |         console.error("Error watching location:", error);
+     |                 ^
+  32 |       },
+  33 |       {
+  34 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:31:17)
