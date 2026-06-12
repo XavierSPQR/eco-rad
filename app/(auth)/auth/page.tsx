@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn, signUpResident } from "@/lib/auth";
+import { signIn, signUpResident, sendPasswordReset } from "@/lib/auth";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -133,7 +133,7 @@ function friendlyError(code: string, rawMessage?: string): string {
     "auth/weak-password":
       "Password must be at least 6 characters.",
     "auth/user-not-found":
-      "No account found with this email. Please sign up first.",
+      "No account found with this email. Please check and try again.",
     "auth/wrong-password":
       "Incorrect password. Please try again.",
     "auth/invalid-credential":
@@ -150,6 +150,8 @@ function friendlyError(code: string, rawMessage?: string): string {
       "Firebase configuration error. Please contact support.",
     "auth/app-not-authorized":
       "This app is not authorised to use Firebase Authentication.",
+    "auth/missing-email":
+      "Missing email address.",
 
     // ── Firestore errors ──────────────────────────────────────────────────────
     "permission-denied":
@@ -220,6 +222,12 @@ function AuthPageContent() {
   // ── Shared UI state ──
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // ── Forgot Password state ──
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotStatus, setForgotStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
 
   const loginHeading =
     role === "admin"
@@ -299,6 +307,24 @@ function AuthPageContent() {
       setError(friendlyError(e.code ?? "", e.message));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!forgotEmail.trim()) {
+      setForgotStatus({ type: 'error', msg: "Please enter your email address." });
+      return;
+    }
+    setForgotStatus(null);
+    setForgotLoading(true);
+    try {
+      await sendPasswordReset(forgotEmail.trim());
+      setForgotStatus({ type: 'success', msg: "Password reset link sent! Please check your inbox." });
+    } catch (e: any) {
+      console.error("[handleResetPassword] error:", e.code, e.message, e);
+      setForgotStatus({ type: 'error', msg: friendlyError(e.code ?? "", e.message) });
+    } finally {
+      setForgotLoading(false);
     }
   }
 
@@ -419,9 +445,19 @@ function AuthPageContent() {
                 />
                 <span>Remember me</span>
               </label>
-              <button type="button" className="auth-forgot">
-                Forgot password?
-              </button>
+              {role !== "admin" && (
+                <button
+                  type="button"
+                  className="auth-forgot"
+                  onClick={() => {
+                    setForgotEmail(loginEmail);
+                    setForgotStatus(null);
+                    setShowForgotModal(true);
+                  }}
+                >
+                  Forgot password?
+                </button>
+              )}
             </div>
 
             <button
@@ -565,6 +601,57 @@ function AuthPageContent() {
           <button type="button">Support</button>
         </span>
       </footer>
+
+      {/* ── Forgot Password Modal ── */}
+      {showForgotModal && (
+        <div className="auth-modal-overlay" onClick={() => setShowForgotModal(false)}>
+          <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="auth-modal-header">
+              <h2 className="auth-modal-title">Reset Password</h2>
+              <button className="auth-modal-close" onClick={() => setShowForgotModal(false)}>×</button>
+            </div>
+            <p className="auth-modal-desc">
+              Enter your email address and we'll send you a link to reset your password.
+            </p>
+
+            <div className="auth-form" style={{ marginTop: 16 }}>
+              <div className="auth-field">
+                <span className="auth-field-icon"><IconMail /></span>
+                <input
+                  className="auth-input"
+                  type="email"
+                  placeholder="Email address"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleResetPassword()}
+                  autoComplete="email"
+                  disabled={forgotLoading}
+                />
+              </div>
+
+              {forgotStatus && (
+                <div className={`auth-status auth-status--${forgotStatus.type}`}>
+                  {forgotStatus.msg}
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="auth-btn auth-btn--primary"
+                onClick={handleResetPassword}
+                disabled={forgotLoading}
+                style={{ marginTop: 8 }}
+              >
+                {forgotLoading ? (
+                  <span className="auth-btn-loading">
+                    <IconSpinner /> Sending link…
+                  </span>
+                ) : "Send Reset Link"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap');
@@ -903,6 +990,80 @@ function AuthPageContent() {
           transform: translateY(-1px);
         }
         .auth-social-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* ── Modal ── */
+        .auth-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(21, 37, 31, 0.4);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+          padding: 16px;
+        }
+        .auth-modal {
+          background: white;
+          width: 100%;
+          max-width: 400px;
+          border-radius: 24px;
+          padding: 28px;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+          animation: modalScale 0.3s cubic-bezier(.22,1,.36,1) both;
+        }
+        @keyframes modalScale {
+          from { opacity: 0; transform: scale(0.95); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        .auth-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 8px;
+        }
+        .auth-modal-title {
+          font-family: 'DM Serif Display', serif;
+          font-size: 1.4rem;
+          margin: 0;
+        }
+        .auth-modal-close {
+          background: none;
+          border: none;
+          font-size: 1.5rem;
+          cursor: pointer;
+          color: #9ca3af;
+          padding: 0;
+          line-height: 1;
+        }
+        .auth-modal-close:hover { color: #1a1a1a; }
+        .auth-modal-desc {
+          font-size: 0.85rem;
+          color: #6b7280;
+          margin: 0;
+          line-height: 1.5;
+        }
+
+        .auth-status {
+          padding: 10px 14px;
+          border-radius: 10px;
+          font-size: 0.82rem;
+          font-weight: 500;
+          line-height: 1.45;
+        }
+        .auth-status--success {
+          background: #f0fdf4;
+          border: 1px solid #bbf7d0;
+          color: #15803d;
+        }
+        .auth-status--error {
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          color: #b91c1c;
+        }
 
         /* ── Footer ── */
         .auth-footer {
