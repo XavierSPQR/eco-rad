@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 
@@ -125,13 +125,9 @@ export default function TrackTruckPage() {
   const [trucks, setTrucks] = useState<Truck[]>([]);
 
   useEffect(() => {
-    // Only listen to trucks in the resident's district, or fallback to all if none
     const trucksRef = collection(db, "activeVehicles");
-    const q = profile?.district
-      ? query(trucksRef, where("area", "==", profile.district))
-      : trucksRef;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(trucksRef, (snapshot) => {
       const liveTrucks = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -150,7 +146,7 @@ export default function TrackTruckPage() {
     });
 
     return () => unsubscribe();
-  }, [profile]);
+  }, []);
 
   return (
     <div className="tt-root">
