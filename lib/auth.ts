@@ -3,9 +3,10 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   type User,
 } from "firebase/auth";
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, query, collection, where, getDocs } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
 export type UserRole = "resident" | "collector" | "admin";
@@ -109,4 +110,13 @@ export async function logOut() {
 
 export function onAuthChange(callback: (user: User | null) => void) {
   return onAuthStateChanged(auth, callback);
+}
+
+export async function sendPasswordReset(email: string) {
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (error: any) {
+    console.error("[sendPasswordReset] Error:", error.code, error.message);
+    throw error;
+  }
 }
