@@ -6,7 +6,23 @@ import { RoleGuard } from "@/components/RoleGuard";
 
 
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  getCountFromServer,
+  getAggregateFromServer,
+  sum,
+  orderBy,
+  limit,
+  writeBatch,
+  doc,
+  serverTimestamp,
+  Timestamp
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -27,42 +43,159 @@ const sidebarItems = [
   { label: "Reports", href: "/admin/report", icon: "📈" },
 ];
 
-const metrics = [
-  { label: "Total users", value: "12,840" },
-  { label: "Active drivers", value: "184" },
-  { label: "Pickups today", value: "1,206" },
-  { label: "Verified complaints", value: "94" },
-  { label: "Monthly waste", value: "284 t" },
-];
-
-const wasteTypeCollections = [
-  { label: "Plastic", value: 420 },
-  { label: "Paper", value: 350 },
-  { label: "Glass", value: 280 },
-  { label: "Metal", value: 210 },
-  { label: "Organic", value: 380 },
-];
-
-const contributors = [
-  { name: "Anushka Jayawardena", score: "4820" },
-  { name: "Nimal Perera", score: "2450" },
-  { name: "Tharindu Bandara", score: "2380" },
-  { name: "Dilani Senanayake", score: "2110" },
-  { name: "Ruwan Madushanka", score: "1990" },
-];
-
 export default function AdminOverviewPage() {
   const pathname = usePathname();
   const [modalOpen, setModalOpen] = useState(false);
   const [sendTo, setSendTo] = useState("all");
   const [recipient, setRecipient] = useState("");
   const [message, setMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
-  const handleSend = () => {
-    setModalOpen(false);
-    setMessage("");
-    setRecipient("");
-    setSendTo("all");
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    activeDrivers: 0,
+    pickupsToday: 0,
+    verifiedComplaints: 0,
+    totalWaste: 0
+  });
+
+  const [wasteTypeData, setWasteTypeData] = useState([
+    { label: "Organic", value: 0 },
+    { label: "E-Waste", value: 0 },
+    { label: "Recyclable", value: 0 },
+  ]);
+
+  const [topContributors, setTopContributors] = useState<{name: string, score: number}[]>([]);
+
+  useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        // 1. Counts
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        const [
+          usersCount,
+          driversCount,
+          pickupsTodayCount,
+          complaintsCount
+        ] = await Promise.all([
+          getCountFromServer(collection(db, "users")),
+          getCountFromServer(query(collection(db, "activeVehicles"), where("status", "==", "Live"))),
+          getCountFromServer(query(collection(db, "wasteCollections"), where("collectedAt", ">=", Timestamp.fromDate(startOfToday)))),
+          getCountFromServer(query(collection(db, "complaints"), where("status", "==", "Resolved")))
+        ]);
+
+        // 2. Waste Data (Total and by Type) using server-side aggregation for efficiency
+        const [
+          totalAgg,
+          organicAgg,
+          eWasteAgg,
+          recyclableAgg
+        ] = await Promise.all([
+          getAggregateFromServer(collection(db, "wasteCollections"), { weight: sum("weight") }),
+          getAggregateFromServer(query(collection(db, "wasteCollections"), where("wasteType", "==", "Organic")), { weight: sum("weight") }),
+          getAggregateFromServer(query(collection(db, "wasteCollections"), where("wasteType", "==", "E-Waste")), { weight: sum("weight") }),
+          getAggregateFromServer(query(collection(db, "wasteCollections"), where("wasteType", "==", "Recyclable")), { weight: sum("weight") }),
+        ]);
+
+        const totalWeight = totalAgg.data().weight || 0;
+        const types = {
+          Organic: organicAgg.data().weight || 0,
+          "E-Waste": eWasteAgg.data().weight || 0,
+          Recyclable: recyclableAgg.data().weight || 0
+        };
+
+        // 3. Top Contributors (Manual sort to avoid index requirement for now)
+        const residentsQuery = query(
+          collection(db, "users"),
+          where("role", "==", "resident")
+        );
+        const residentsSnap = await getDocs(residentsQuery);
+        const topRes = residentsSnap.docs
+          .map(doc => ({
+            name: doc.data().fullName || "Anonymous",
+            score: doc.data().points || 0
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+
+        setStats({
+          totalUsers: usersCount.data().count,
+          activeDrivers: driversCount.data().count,
+          pickupsToday: pickupsTodayCount.data().count,
+          verifiedComplaints: complaintsCount.data().count,
+          totalWaste: totalWeight
+        });
+
+        setWasteTypeData([
+          { label: "Organic", value: types.Organic },
+          { label: "E-Waste", value: types["E-Waste"] },
+          { label: "Recyclable", value: types.Recyclable },
+        ]);
+
+        setTopContributors(topRes);
+
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+      }
+    }
+
+    fetchDashboardData();
+  }, []);
+
+  const handleSend = async () => {
+    if (!message.trim()) return;
+    setIsSending(true);
+
+    try {
+      let targetUsersQuery;
+      if (sendTo === "all") {
+        targetUsersQuery = query(collection(db, "users"));
+      } else if (sendTo === "drivers") {
+        targetUsersQuery = query(collection(db, "users"), where("role", "in", ["admin", "collector"])); // Assuming drivers are collectors/admins? Actually drivers are usually collectors.
+      } else if (sendTo === "collectors") {
+        targetUsersQuery = query(collection(db, "users"), where("role", "==", "collector"));
+      } else if (sendTo === "residents") {
+        targetUsersQuery = query(collection(db, "users"), where("role", "==", "resident"));
+      } else if (sendTo === "specific") {
+        targetUsersQuery = query(collection(db, "users"), where("email", "==", recipient));
+      }
+
+      if (!targetUsersQuery) return;
+
+      const usersSnap = await getDocs(targetUsersQuery);
+      const docs = usersSnap.docs;
+
+      // Firestore batches are limited to 500 operations
+      for (let i = 0; i < docs.length; i += 500) {
+        const batch = writeBatch(db);
+        const chunk = docs.slice(i, i + 500);
+
+        chunk.forEach((userDoc) => {
+          const notifRef = doc(collection(db, "notifications"));
+          batch.set(notifRef, {
+            userId: userDoc.id,
+            title: "System Announcement",
+            message: message,
+            status: "unread",
+            createdAt: serverTimestamp(),
+          });
+        });
+
+        await batch.commit();
+      }
+      alert("Messages sent successfully!");
+      setModalOpen(false);
+      setMessage("");
+      setRecipient("");
+      setSendTo("all");
+    } catch (error) {
+      console.error("Error sending messages:", error);
+      alert("Failed to send messages.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -182,32 +315,50 @@ export default function AdminOverviewPage() {
         </section>
 
         <section className="admin-metrics">
-          {metrics.map((metric) => (
-            <div className="metric-card" key={metric.label}>
-              <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
-            </div>
-          ))}
+          <div className="metric-card">
+            <span>Total users</span>
+            <strong>{stats.totalUsers.toLocaleString()}</strong>
+          </div>
+          <div className="metric-card">
+            <span>Active drivers</span>
+            <strong>{stats.activeDrivers}</strong>
+          </div>
+          <div className="metric-card">
+            <span>Pickups today</span>
+            <strong>{stats.pickupsToday}</strong>
+          </div>
+          <div className="metric-card">
+            <span>Verified complaints</span>
+            <strong>{stats.verifiedComplaints}</strong>
+          </div>
+          <div className="metric-card">
+            <span>Total waste</span>
+            <strong>{stats.totalWaste.toFixed(1)} kg</strong>
+          </div>
         </section>
 
         <section className="overview-grid">
           <article className="overview-card overview-card--large">
             <div className="card-header">
               <div>
-                <h2>Collection weight - this week</h2>
-                <p>Daily recyclable waste collected across active districts.</p>
+                <h2>Waste Collection by Type</h2>
+                <p>Total kilograms collected per waste category (all time).</p>
               </div>
             </div>
 
-            <div className="bar-chart">
-              {wasteTypeCollections.map((bar) => (
-                <div className="bar-item" key={bar.label}>
-                  <div className="bar-track">
-                    <span style={{ height: `${bar.value / 5}px` }} />
+            <div className="bar-chart bar-chart--three">
+              {wasteTypeData.map((bar) => {
+                const maxVal = Math.max(...wasteTypeData.map(d => d.value), 1);
+                const barHeight = (bar.value / maxVal) * 170;
+                return (
+                  <div className="bar-item" key={bar.label}>
+                    <div className="bar-track">
+                      <span style={{ height: `${barHeight}px` }} title={`${bar.value.toFixed(1)} kg`} />
+                    </div>
+                    <small>{bar.label}</small>
                   </div>
-                  <small>{bar.label}</small>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </article>
 
@@ -215,22 +366,20 @@ export default function AdminOverviewPage() {
             <div className="card-header">
               <div>
                 <h2>Top contributors</h2>
-                <p>Highest point earners this month.</p>
+                <p>Residents with the highest earned points.</p>
               </div>
             </div>
 
             <ol className="contributors-list">
-              {contributors.map((contributor, index) => (
-                <li key={contributor.name}>
+              {topContributors.map((contributor, index) => (
+                <li key={index}>
                   <span className="rank">{index + 1}</span>
                   <span>{contributor.name}</span>
-                  <strong>{contributor.score}</strong>
+                  <strong>{contributor.score.toLocaleString()}</strong>
                 </li>
               ))}
             </ol>
           </article>
-
-
         </section>
       </main>
 
@@ -280,8 +429,12 @@ export default function AdminOverviewPage() {
               <button className="modal-button modal-button--secondary" onClick={() => setModalOpen(false)}>
                 Cancel
               </button>
-              <button className="modal-button modal-button--primary" onClick={handleSend}>
-                Send message
+              <button
+                className="modal-button modal-button--primary"
+                onClick={handleSend}
+                disabled={isSending}
+              >
+                {isSending ? "Sending..." : "Send message"}
               </button>
             </div>
           </div>
@@ -567,6 +720,10 @@ export default function AdminOverviewPage() {
           border-radius: 24px;
           background: linear-gradient(#f8fbf7 1px, transparent 1px), linear-gradient(90deg, #f8fbf7 1px, transparent 1px);
           background-size: 100% 52px, 64px 100%;
+        }
+
+        .bar-chart--three {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
         }
 
         .bar-item {
