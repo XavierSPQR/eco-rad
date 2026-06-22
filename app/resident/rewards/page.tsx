@@ -15,6 +15,10 @@ import {
   orderBy,
   serverTimestamp,
   increment,
+  getDocs,
+  writeBatch,
+  runTransaction,
+  getDoc,
 } from "firebase/firestore";
 
 type BadgeLevel = {
@@ -49,17 +53,31 @@ function OfferCard({
   onRedeem: (offer: any) => void;
 }) {
   const points = offer.pointsRequired !== undefined ? offer.pointsRequired : offer.points;
+  const isOutOfStock = typeof offer.quantity === 'number' && offer.quantity <= 0;
+
   return (
-    <article className={`${styles.offerCard} ${offer.active ? "" : styles.offerCardDisabled}`}>
+    <article className={`${styles.offerCard} ${offer.active && !isOutOfStock ? "" : styles.offerCardDisabled}`}>
       <div className={styles.offerMeta}>
         <span>{offer.category}</span>
       </div>
       <h3 className={styles.offerTitle}>{offer.title}</h3>
       <p className={styles.offerDescription}>{offer.description}</p>
       <div className={styles.offerFooter}>
-        <span className={styles.offerPoints}>{points} pts</span>
-        <button type="button" className={styles.redeemButton} disabled={!offer.active} onClick={() => onRedeem(offer)}>
-          Redeem
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span className={styles.offerPoints}>{points} pts</span>
+          {typeof offer.quantity === 'number' && (
+            <span className={isOutOfStock ? styles.outOfStockLabel : styles.quantityLabel} style={{ width: 'fit-content' }}>
+              {isOutOfStock ? "Out of Stock" : `${offer.quantity} available`}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          className={styles.redeemButton}
+          disabled={!offer.active || isOutOfStock}
+          onClick={() => onRedeem(offer)}
+        >
+          {isOutOfStock ? "Out of Stock" : "Redeem"}
         </button>
       </div>
     </article>
@@ -184,38 +202,65 @@ export default function ResidentRewardsPage() {
 
   const confirmRedeem = async () => {
     if (!selectedOffer || !user) return;
-    const offer = selectedOffer;
-    const pointsRequired = offer.pointsRequired || offer.points;
-
-    if (pointsRequired > availablePoints) {
-      setMessage("Insufficient points to redeem this reward.");
-      setIsError(true);
-      setModalOpen(false);
-      return;
-    }
+    const offerId = selectedOffer.id;
+    if (!offerId) return;
 
     setIsSubmitting(true);
     try {
-      // 1. Deduct points from user
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        points: increment(-pointsRequired),
-        updatedAt: serverTimestamp(),
+      await runTransaction(db, async (transaction) => {
+        // 1. Get latest data
+        const userRef = doc(db, "users", user.uid);
+        const rewardRef = doc(db, "rewards", offerId);
+
+        const userSnap = await transaction.get(userRef);
+        const rewardSnap = await transaction.get(rewardRef);
+
+        if (!userSnap.exists()) throw new Error("User does not exist");
+        if (!rewardSnap.exists()) throw new Error("Reward does not exist");
+
+        const userData = userSnap.data();
+        const rewardData = rewardSnap.data();
+
+        const pointsRequired = rewardData.pointsRequired || rewardData.points || 0;
+        const currentPoints = userData.points || 0;
+        const currentQuantity = rewardData.quantity;
+
+        // 2. Validations
+        if (currentPoints < pointsRequired) {
+          throw new Error("Insufficient points");
+        }
+
+        if (typeof currentQuantity === 'number' && currentQuantity <= 0) {
+          throw new Error("Reward is out of stock");
+        }
+
+        // 3. Updates
+        transaction.update(userRef, {
+          points: increment(-pointsRequired),
+          updatedAt: serverTimestamp(),
+        });
+
+        if (typeof currentQuantity === 'number') {
+          transaction.update(rewardRef, {
+            quantity: increment(-1),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        const redemptionRef = doc(collection(db, "redemptions"));
+        transaction.set(redemptionRef, {
+          userId: user.uid,
+          rewardId: offerId,
+          rewardName: rewardData.title,
+          pointsSpent: pointsRequired,
+          residentName: redeemName || profile?.fullName || "Anonymous",
+          nic: redeemNic || profile?.nic || "-",
+          status: "pending",
+          createdAt: serverTimestamp(),
+        });
       });
 
-      // 2. Create redemption record
-      await addDoc(collection(db, "redemptions"), {
-        userId: user.uid,
-        rewardId: offer.id || "manual",
-        rewardName: offer.title,
-        pointsSpent: pointsRequired,
-        residentName: redeemName || profile?.fullName || "Anonymous",
-        nic: redeemNic || profile?.nic || "-",
-        status: "pending",
-        createdAt: serverTimestamp(),
-      });
-
-      // 3. Notify all admins
+      // 4. Notify all admins (outside transaction for efficiency/simplicity, as it's not critical for consistency)
       const adminsQuery = query(collection(db, "users"), where("role", "==", "admin"));
       const adminsSnap = await getDocs(adminsQuery);
       const batch = writeBatch(db);
@@ -224,7 +269,7 @@ export default function ResidentRewardsPage() {
         batch.set(notifRef, {
           userId: adminDoc.id,
           title: "Reward Redemption",
-          description: `${redeemName || profile?.fullName || "User"} ${redeemNic || profile?.nic || ""} redeemed ${offer.title}`,
+          description: `${redeemName || profile?.fullName || "User"} ${redeemNic || profile?.nic || ""} redeemed ${selectedOffer.title}`,
           type: "reward",
           read: false,
           createdAt: serverTimestamp(),
@@ -232,11 +277,17 @@ export default function ResidentRewardsPage() {
       });
       await batch.commit();
 
-      setMessage(`Successfully redeemed ${offer.title}!`);
+      setMessage(`Successfully redeemed ${selectedOffer.title}!`);
       setIsError(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Redemption error:", error);
-      setMessage("Failed to redeem reward. Please try again.");
+      if (error.message === "Insufficient points") {
+        setMessage("Insufficient points to redeem this reward.");
+      } else if (error.message === "Reward is out of stock") {
+        setMessage("This reward is currently out of stock.");
+      } else {
+        setMessage("Failed to redeem reward. Please try again.");
+      }
       setIsError(true);
     } finally {
       setIsSubmitting(false);

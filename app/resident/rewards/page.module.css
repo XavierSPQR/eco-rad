@@ -224,6 +224,22 @@
   color: #166534;
 }
 
+.quantityLabel {
+  font-size: 0.75rem;
+  color: #166534;
+  background: #f0fdf4;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.outOfStockLabel {
+  font-size: 0.75rem;
+  color: #991b1b;
+  background: #fef2f2;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
 .emptyState {
   grid-column: 1 / -1;
   text-align: center;
