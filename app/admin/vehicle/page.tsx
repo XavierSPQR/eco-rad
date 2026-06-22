@@ -6,7 +6,39 @@ import { RoleGuard } from "@/components/RoleGuard";
 
 
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  onSnapshot,
+  query,
+  where,
+  getDocs,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
+
+interface Vehicle {
+  uid: string; // Document ID (Collector's UID)
+  area: string;
+  driver: string;
+  eta: string;
+  id: string; // Vehicle Number
+  lat: string | number;
+  lng: string | number;
+  status: string;
+  updatedAt?: Timestamp;
+}
+
+interface Collector {
+  uid: string;
+  fullName: string;
+  phone: string;
+}
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -28,59 +60,144 @@ const sidebarItems = [
 ];
 
 
-const initialVehicles = [
-  { type: "Compactor Truck", number: "WP 3456", status: "Active", driver: "Sumith Dissanayake", contact: "0778967345" },
-  { type: "Dump Truck", number: "WP 5690", status: "Active", driver: "Nadeesh sadaruwan", contact: "0776756345" },
-  { type: "Hook Lift", number: "WP 4534", status: "Active", driver: "", contact: "" },
-  { type: "Front Loader", number: "WP 3998", status: "Restricted", driver: "", contact: "" },
-  { type: "Rear Loader Dump Truck", number: "WP 8903", status: "Active", driver: "", contact: "" },
-];
-
 export default function AdminVehiclePage() {
   const pathname = usePathname();
-  const [query, setQuery] = useState("");
-  const [vehicles, setVehicles] = useState(initialVehicles);
-  const [addedCount, setAddedCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [collectors, setCollectors] = useState<Collector[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+
+  const [formData, setFormData] = useState({
+    collectorUid: "",
+    driverName: "",
+    vehicleId: "",
+    area: "",
+  });
+
+  useEffect(() => {
+    const unsubscribeVehicles = onSnapshot(collection(db, "activeVehicles"), (snapshot) => {
+      const vehicleData = snapshot.docs.map((doc) => ({
+        uid: doc.id,
+        ...doc.data(),
+      })) as Vehicle[];
+      setVehicles(vehicleData);
+      setLoading(false);
+    });
+
+    const fetchCollectors = async () => {
+      const q = query(collection(db, "users"), where("role", "in", ["collector"]));
+      const querySnapshot = await getDocs(q);
+      const collectorData = querySnapshot.docs.map((doc) => ({
+        uid: doc.id,
+        fullName: doc.data().fullName || "",
+        phone: doc.data().phone || "",
+      })) as Collector[];
+      setCollectors(collectorData);
+    };
+
+    fetchCollectors();
+
+    return () => unsubscribeVehicles();
+  }, []);
 
   const filteredVehicles = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = searchQuery.trim().toLowerCase();
 
     if (!normalizedQuery) {
       return vehicles;
     }
 
-    return vehicles.filter((vehicle) =>
-      [vehicle.type, vehicle.number, vehicle.status, vehicle.driver, vehicle.contact].some((value) =>
-        value.toLowerCase().includes(normalizedQuery),
-      ),
-    );
-  }, [query, vehicles]);
+    return vehicles.filter((vehicle) => {
+      const collector = collectors.find((c) => c.uid === vehicle.uid);
+      return [
+        vehicle.area,
+        vehicle.id,
+        vehicle.status,
+        vehicle.driver,
+        collector?.phone || "",
+      ].some((value) => value?.toLowerCase().includes(normalizedQuery));
+    });
+  }, [searchQuery, vehicles, collectors]);
 
-  const toggleVehicleStatus = (number: string) => {
-    setVehicles((items) =>
-      items.map((vehicle) =>
-        vehicle.number === number
-          ? { ...vehicle, status: vehicle.status === "Active" ? "Restricted" : "Active" }
-          : vehicle,
-      ),
-    );
+  const toggleVehicleStatus = async (vehicle: Vehicle) => {
+    try {
+      const vehicleRef = doc(db, "activeVehicles", vehicle.uid);
+      const isCurrentlyRestricted = vehicle.status === "Restricted";
+      await updateDoc(vehicleRef, {
+        status: isCurrentlyRestricted ? "Active" : "Restricted",
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Error updating vehicle status:", error);
+    }
   };
 
-  const addVehicle = () => {
-    const nextCount = addedCount + 1;
-
-    setAddedCount(nextCount);
-    setVehicles((items) => [
-      ...items,
-      {
-        type: "Collection Truck",
-        number: `WP 91${nextCount}0`,
-        status: "Active",
-        driver: "Unassigned",
-        contact: "",
-      },
-    ]);
+  const handleAddClick = () => {
+    setEditingVehicle(null);
+    setFormData({ collectorUid: "", driverName: "", vehicleId: "", area: "" });
+    setIsFormOpen(true);
   };
+
+  const handleEditClick = (vehicle: Vehicle) => {
+    setEditingVehicle(vehicle);
+    setFormData({
+      collectorUid: vehicle.uid,
+      driverName: vehicle.driver,
+      vehicleId: vehicle.id,
+      area: vehicle.area,
+    });
+    setIsFormOpen(true);
+  };
+
+  const handleDeleteVehicle = async (uid: string) => {
+    if (!confirm("Are you sure you want to remove this vehicle?")) return;
+    try {
+      await deleteDoc(doc(db, "activeVehicles", uid));
+    } catch (error) {
+      console.error("Error deleting vehicle:", error);
+    }
+  };
+
+  const handleSaveVehicle = async () => {
+    if (!formData.collectorUid || !formData.vehicleId || !formData.area || !formData.driverName) {
+      alert("Please fill all fields");
+      return;
+    }
+
+    try {
+      const vehicleData = {
+        driver: formData.driverName,
+        id: formData.vehicleId,
+        area: formData.area,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (editingVehicle) {
+        const vehicleRef = doc(db, "activeVehicles", editingVehicle.uid);
+        await updateDoc(vehicleRef, vehicleData);
+      } else {
+        const vehicleRef = doc(db, "activeVehicles", formData.collectorUid);
+        await setDoc(vehicleRef, {
+          ...vehicleData,
+          lat: "",
+          lng: "",
+          status: "Offline",
+          eta: "N/A",
+        });
+      }
+      setIsFormOpen(false);
+    } catch (error) {
+      console.error("Error saving vehicle:", error);
+    }
+  };
+
+  const collectorsWithoutVehicle = useMemo(() => {
+    return collectors.filter(
+      (collector) => !vehicles.some((vehicle) => vehicle.uid === collector.uid) || (editingVehicle && editingVehicle.uid === collector.uid)
+    );
+  }, [collectors, vehicles, editingVehicle]);
 
   return (
         <RoleGuard allowedRole="admin">
@@ -146,23 +263,83 @@ export default function AdminVehiclePage() {
               <h2>Vehicle Management</h2>
               <p>Manage collection vehicles, drivers, contacts, and active status.</p>
             </div>
-            <button className="add-button" onClick={addVehicle}>+ Add</button>
+            <button className="add-button" onClick={handleAddClick}>+ Add</button>
           </div>
+
+          {isFormOpen && (
+            <div className="vehicle-form-card">
+              <div className="form-row">
+                <label>Collector</label>
+                <select
+                  value={formData.collectorUid}
+                  onChange={(e) => setFormData({ ...formData, collectorUid: e.target.value })}
+                  disabled={!!editingVehicle}
+                >
+                  <option value="">Select a Collector</option>
+                  {collectorsWithoutVehicle.map((c) => (
+                    <option key={c.uid} value={c.uid}>
+                      {c.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-row">
+                <label>Driver Name</label>
+                <input
+                  type="text"
+                  value={formData.driverName}
+                  onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
+                  placeholder="Enter driver name"
+                />
+              </div>
+
+              <div className="form-row">
+                <label>Vehicle ID (No)</label>
+                <input
+                  type="text"
+                  value={formData.vehicleId}
+                  onChange={(e) => setFormData({ ...formData, vehicleId: e.target.value })}
+                  placeholder="e.g. WP 1234"
+                />
+              </div>
+
+              <div className="form-row">
+                <label>Area</label>
+                <input
+                  type="text"
+                  value={formData.area}
+                  onChange={(e) => setFormData({ ...formData, area: e.target.value })}
+                  placeholder="e.g. Colombo"
+                />
+              </div>
+
+              <div className="form-actions">
+                <button className="action-button" onClick={handleSaveVehicle}>
+                  {editingVehicle ? "Save Changes" : "Add Vehicle"}
+                </button>
+                <button
+                  className="action-button action-button--secondary"
+                  onClick={() => setIsFormOpen(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="vehicle-search">
             <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search type, vehicle number, driver, contact..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search area, vehicle number, driver, contact..."
               aria-label="Search vehicles"
             />
           </div>
 
-          
-
           <div className="vehicle-table">
             <div className="vehicle-row vehicle-row--header">
-              <span>TYPE</span>
+              <span>AREA</span>
               <span>VEHICLE NO</span>
               <span>STATUS</span>
               <span>DRIVER</span>
@@ -170,35 +347,62 @@ export default function AdminVehiclePage() {
               <span>ACTION</span>
             </div>
 
-            {filteredVehicles.map((vehicle) => (
-              <div className="vehicle-row" key={vehicle.number}>
-                <span>{vehicle.type}</span>
-                <span className="vehicle-number">{vehicle.number}</span>
-                <span className={vehicle.status === "Active" ? "status-chip status-active" : "status-chip status-restricted"}>
-                  {vehicle.status}
-                </span>
-                <span>{vehicle.driver || "Unassigned"}</span>
-                <span className="contact-cell">
-                  {vehicle.contact || "N/A"}
-                  {vehicle.contact && <button aria-label={`Call ${vehicle.driver}`}>☎</button>}
-                </span>
-                <span className="action-buttons">
-                  <button className="action-button">Edit</button>
-                  <button
-                    className={vehicle.status === "Active" ? "action-button action-button--danger" : "action-button action-button--secondary"}
-                    onClick={() => toggleVehicleStatus(vehicle.number)}
-                  >
-                    {vehicle.status === "Active" ? "Restrict" : "Allow"}
-                  </button>
-                </span>
-              </div>
-            ))}
-
-            {filteredVehicles.length === 0 && (
+            {loading ? (
+              <div style={{ padding: "2rem", textAlign: "center" }}>Loading vehicles...</div>
+            ) : filteredVehicles.length === 0 ? (
               <div className="empty-state">
                 <strong>No vehicles found</strong>
-                <span>Try another vehicle type, number, driver, or contact.</span>
+                <span>Try another search term or add a new vehicle.</span>
               </div>
+            ) : (
+              filteredVehicles.map((vehicle) => {
+                const collector = collectors.find((c) => c.uid === vehicle.uid);
+                return (
+                  <div className="vehicle-row" key={vehicle.uid}>
+                    <span>{vehicle.area}</span>
+                    <span className="vehicle-number">{vehicle.id}</span>
+                    <span
+                      className={
+                        vehicle.status === "Active" || vehicle.status === "Live"
+                          ? "status-chip status-active"
+                          : vehicle.status === "Restricted"
+                          ? "status-chip status-restricted"
+                          : "status-chip status-offline"
+                      }
+                    >
+                      {vehicle.status}
+                    </span>
+                    <span>{vehicle.driver || "Unassigned"}</span>
+                    <span className="contact-cell">
+                      {collector?.phone || "N/A"}
+                      {collector?.phone && (
+                        <button aria-label={`Call ${vehicle.driver}`}>☎</button>
+                      )}
+                    </span>
+                    <span className="action-buttons">
+                      <button className="action-button" onClick={() => handleEditClick(vehicle)}>
+                        Edit
+                      </button>
+                      <button
+                        className={
+                          vehicle.status !== "Restricted"
+                            ? "action-button action-button--danger"
+                            : "action-button action-button--secondary"
+                        }
+                        onClick={() => toggleVehicleStatus(vehicle)}
+                      >
+                        {vehicle.status !== "Restricted" ? "Restrict" : "Allow"}
+                      </button>
+                      <button
+                        className="action-button action-button--danger"
+                        onClick={() => handleDeleteVehicle(vehicle.uid)}
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  </div>
+                );
+              })
             )}
           </div>
         </section>
@@ -435,10 +639,51 @@ export default function AdminVehiclePage() {
           border: none;
           border-radius: 16px;
           padding: 14px 22px;
-          background: #f2edf7;
-          color: #5c4773;
+          background: #eef9f2;
+          color: #166529;
           font-weight: 800;
           cursor: pointer;
+        }
+
+        .vehicle-form-card {
+          border-radius: 18px;
+          padding: 20px;
+          background: white;
+          box-shadow: 0 10px 24px rgba(23, 63, 31, 0.08);
+          margin-bottom: 20px;
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+
+        .form-row {
+          display: grid;
+          gap: 8px;
+        }
+
+        .form-row label {
+          font-weight: 700;
+          color: #315037;
+          font-size: 0.9rem;
+        }
+
+        .form-row input,
+        .form-row select {
+          border: 1px solid #d9e9d9;
+          border-radius: 12px;
+          padding: 12px 14px;
+          font-size: 0.95rem;
+          color: #1b3c28;
+          background: #f7fbf6;
+          outline: none;
+        }
+
+        .form-actions {
+          grid-column: 1 / -1;
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+          margin-top: 12px;
         }
 
         .vehicle-search {
@@ -505,6 +750,11 @@ export default function AdminVehiclePage() {
         .status-restricted {
           background: #fdecea;
           color: #b91c1c;
+        }
+
+        .status-offline {
+          background: #f3f4f6;
+          color: #6b7280;
         }
 
         .contact-cell {

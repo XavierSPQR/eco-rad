@@ -28,13 +28,6 @@ const sidebarItems = [
   { label: "Reports", href: "/admin/report", icon: "📈" },
 ];
 
-const metrics = [
-  { label: "Total users", value: "12,840" },
-  { label: "Active drivers", value: "184" },
-  { label: "Pickups today", value: "1,206" },
-  { label: "Verified complaints", value: "94" },
-  { label: "Monthly waste", value: "284 t" },
-];
 
 
 
@@ -90,19 +83,27 @@ export default function AdminLiveTrackingPage() {
     return () => unsubscribe();
   }, []);
 
+  const activeVehicles = useMemo(() => {
+    return vehicles.filter(v => v.status !== "Offline");
+  }, [vehicles]);
+
   const filteredVehicles = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
     if (!normalizedQuery) {
-      return vehicles;
+      return activeVehicles;
     }
 
-    return vehicles.filter((vehicle) =>
+    return activeVehicles.filter((vehicle) =>
       [vehicle.id, vehicle.driver, vehicle.area, vehicle.status].some((value) =>
-        value.toLowerCase().includes(normalizedQuery),
+        String(value || "").toLowerCase().includes(normalizedQuery),
       ),
     );
-  }, [query]);
+  }, [query, activeVehicles]);
+
+  const metrics = [
+    { label: "Active drivers", value: activeVehicles.length.toString() },
+  ];
 
   return (
         <RoleGuard allowedRole="admin">
@@ -217,15 +218,21 @@ export default function AdminLiveTrackingPage() {
           </div>
         </section>
 
+        <section className="admin-metrics">
+          {metrics.map((metric) => (
+            <div key={metric.label} className="metric-card">
+              <span>{metric.label}</span>
+              <strong>{metric.value}</strong>
+            </div>
+          ))}
+        </section>
+
         <section className="live-grid">
-          <article className="tracking-card tracking-card--large">
+          <article className="tracking-card">
             <div className="card-header">
               <div>
-                <h2>Live route tracking</h2>
-                <p>Monitor active collection trucks and route progress.</p>
-              </div>
-              <div className={selectedVehicle?.status === "Live" ? "status-chip status-active" : "status-chip status-delayed"}>
-                {selectedVehicle?.status || "Unknown"}
+                <h2>Active vehicles</h2>
+                <p>Select a truck to update the route preview.</p>
               </div>
             </div>
 
@@ -236,39 +243,6 @@ export default function AdminLiveTrackingPage() {
                 placeholder="Search truck, driver, district..."
                 aria-label="Search live vehicles"
               />
-            </div>
-
-            <div className="tt-map-wrap route-map">
-              {selectedVehicle ? (
-                <>
-                  <MapEmbed vehicle={selectedVehicle} />
-
-                  {/* Live badge */}
-                  <div className="tt-live-badge">
-                    <span className="tt-live-dot" />
-                    LIVE
-                  </div>
-
-                  {/* Keep existing vehicle chip overlay style */}
-                  <div className="vehicle-chip">
-                    <strong>{selectedVehicle.id}</strong>
-                    <span>{selectedVehicle.eta || "N/A"} away</span>
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-500 font-medium bg-[#e8f5e9]">
-                  No active vehicles found.
-                </div>
-              )}
-            </div>
-          </article>
-
-          <article className="tracking-card">
-            <div className="card-header">
-              <div>
-                <h2>Active vehicles</h2>
-                <p>Select a truck to update the route preview.</p>
-              </div>
             </div>
 
             <div className="vehicle-list pickme-grid">
@@ -301,6 +275,42 @@ export default function AdminLiveTrackingPage() {
                 <div className="empty-state">
                   <strong>No vehicles found</strong>
                   <span>Try another truck ID, driver, or district.</span>
+                </div>
+              )}
+            </div>
+          </article>
+
+          <article className="tracking-card tracking-card--large">
+            <div className="card-header">
+              <div>
+                <h2>Live route tracking</h2>
+                <p>Monitor active collection trucks and route progress.</p>
+              </div>
+              <div className={selectedVehicle?.status === "Live" ? "status-chip status-active" : "status-chip status-delayed"}>
+                {selectedVehicle?.status || "Unknown"}
+              </div>
+            </div>
+
+            <div className="tt-map-wrap route-map">
+              {selectedVehicle ? (
+                <>
+                  <MapEmbed vehicle={selectedVehicle} />
+
+                  {/* Live badge */}
+                  <div className="tt-live-badge">
+                    <span className="tt-live-dot" />
+                    LIVE
+                  </div>
+
+                  {/* Keep existing vehicle chip overlay style */}
+                  <div className="vehicle-chip">
+                    <strong>{selectedVehicle.id}</strong>
+                    <span>{selectedVehicle.eta || "N/A"} away</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500 font-medium bg-[#e8f5e9]">
+                  No active vehicles found.
                 </div>
               )}
             </div>
@@ -505,7 +515,7 @@ export default function AdminLiveTrackingPage() {
 
         .admin-metrics {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+          grid-template-columns: repeat(1, minmax(0, 240px));
           gap: 18px;
         }
 
@@ -530,7 +540,7 @@ export default function AdminLiveTrackingPage() {
 
         .live-grid {
           display: grid;
-          grid-template-columns: 2fr 1fr;
+          grid-template-columns: 1fr 2fr;
           gap: 24px;
         }
 

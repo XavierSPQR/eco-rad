@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { RoleGuard } from "@/components/RoleGuard";
-
-
-
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { collection, getDocs, doc, getDoc, updateDoc, serverTimestamp, addDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/context/AuthContext";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -28,7 +28,7 @@ const sidebarItems = [
 ];
 
 type ComplaintPriority = "High" | "Medium" | "Low";
-type ComplaintStatus = "In-review" | "Resolved";
+type ComplaintStatus = "In review" | "Resolved";
 
 type ComplaintRow = {
   id: string;
@@ -41,63 +41,60 @@ type ComplaintRow = {
   status: ComplaintStatus;
 };
 
-const initialComplaints: ComplaintRow[] = [
-  {
-    id: "C-3101",
-    name: "Nugasewana B/46",
-    nic: "900000000V",
-    subject: "Missed pickup",
-    description: "Pickup was missed for the scheduled day.",
-    location: "Dehiwala",
-    priority: "High",
-    status: "In-review",
-  },
-  {
-    id: "C-3102",
-    name: "UserID:2376798v",
-    nic: "901234567V",
-    subject: "Rewards not increased",
-    description: "Points were not added after a successful collection.",
-    location: "Dehiwala",
-    priority: "Medium",
-    status: "In-review",
-  },
-  {
-    id: "C-3103",
-    name: "UserID:2376798v",
-    nic: "901234567V",
-    subject: "Rewards delay",
-    description: "Points update delay (expected to reflect today).",
-    location: "Dehiwala",
-    priority: "Low",
-    status: "In-review",
-  },
-  {
-    id: "C-3104",
-    name: "At wellawatta B-54",
-    nic: "902345678V",
-    subject: "Overflow bin",
-    description: "Bins overflowed and waste is spreading around the area.",
-    location: "Colombo",
-    priority: "High",
-    status: "In-review",
-  },
-  {
-    id: "C-3105",
-    name: "UserID:2376798v",
-    nic: "901234567V",
-    subject: "Rewards not updated",
-    description: "Submission marked but points not updated.",
-    location: "Dehiwala",
-    priority: "Medium",
-    status: "In-review",
-  },
-];
-
 export default function AdminComplaintPage() {
   const pathname = usePathname();
+  const { profile } = useAuth();
   const [query, setQuery] = useState("");
-  const [complaints, setComplaints] = useState<ComplaintRow[]>(initialComplaints);
+  const [complaints, setComplaints] = useState<ComplaintRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchComplaints() {
+      try {
+        setLoading(true);
+        const complaintsSnap = await getDocs(collection(db, "complaints"));
+        const complaintsData = complaintsSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as any[];
+
+        // Fetch user NICs
+        const userIds = Array.from(new Set(complaintsData.map((c) => c.userId)));
+        const userNics: Record<string, string> = {};
+
+        await Promise.all(
+          userIds.map(async (uid) => {
+            if (!uid) return;
+            const userSnap = await getDoc(doc(db, "users", uid));
+            if (userSnap.exists()) {
+              userNics[uid] = userSnap.data().nic || "N/A";
+            } else {
+              userNics[uid] = "N/A";
+            }
+          })
+        );
+
+        const mapped: ComplaintRow[] = complaintsData.map((c) => ({
+          id: c.id,
+          name: c.userName || "Unknown",
+          nic: userNics[c.userId] || "N/A",
+          subject: c.subject || "No Subject",
+          description: c.description || "No Description",
+          location: c.location || "Not provided",
+          priority: (c.priority as ComplaintPriority) || "Low",
+          status: (c.status as ComplaintStatus) || "In review",
+        }));
+
+        setComplaints(mapped);
+      } catch (error) {
+        console.error("Error fetching complaints:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchComplaints();
+  }, []);
 
   const filteredComplaints = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -116,8 +113,35 @@ export default function AdminComplaintPage() {
     );
   }, [complaints, query]);
 
-  const handleSetStatus = (id: string, nextStatus: ComplaintStatus) => {
-    setComplaints((items) => items.map((c) => (c.id === id ? { ...c, status: nextStatus } : c)));
+  const handleSetStatus = async (id: string, nextStatus: ComplaintStatus) => {
+    try {
+      await updateDoc(doc(db, "complaints", id), {
+        status: nextStatus,
+        updatedAt: serverTimestamp(),
+      });
+
+      if (nextStatus === "Resolved") {
+        const complaintSnap = await getDoc(doc(db, "complaints", id));
+        if (complaintSnap.exists()) {
+          const complaintData = complaintSnap.data();
+          if (complaintData.userId) {
+            await addDoc(collection(db, "notifications"), {
+              userId: complaintData.userId,
+              title: complaintData.subject || "Complaint Update",
+              description: `Your issue ${complaintData.description || ""} is solved`,
+              type: "resolved",
+              read: false,
+              createdAt: serverTimestamp(),
+            });
+          }
+        }
+      }
+
+      setComplaints((items) => items.map((c) => (c.id === id ? { ...c, status: nextStatus } : c)));
+    } catch (error) {
+      console.error("Error updating complaint status:", error);
+      alert("Failed to update status. Please try again.");
+    }
   };
 
   return (
@@ -172,9 +196,9 @@ export default function AdminComplaintPage() {
         {/* top admin user section right top (no search bar) */}
         <div className="admin-top">
           <div className="admin-usercard">
-            <div className="admin-avatar">AU</div>
+            <div className="admin-avatar">{profile?.fullName?.substring(0, 2).toUpperCase() || "AD"}</div>
             <div>
-              <p className="admin-user-name">Admin User</p>
+              <p className="admin-user-name">{profile?.fullName || "Admin User"}</p>
               <p className="admin-user-role">System Admin</p>
             </div>
           </div>
@@ -214,11 +238,15 @@ export default function AdminComplaintPage() {
               <span>Subject</span>
               <span>Description</span>
               <span>Location</span>
+              <span>Priority</span>
               <span>Status</span>
-              <span>Action</span>
             </div>
 
-            {filteredComplaints.map((c) => (
+            {loading ? (
+              <div className="empty-state">
+                <strong>Loading complaints...</strong>
+              </div>
+            ) : filteredComplaints.map((c) => (
               <div className="complaints-row" key={c.id}>
                 <span className="cell-strong">{c.name}</span>
                 <span>{c.nic}</span>
@@ -234,10 +262,10 @@ export default function AdminComplaintPage() {
                   <div className="action-select">
                     <button
                       type="button"
-                      className={c.status === "In-review" ? "status-btn status-btn--active" : "status-btn"}
-                      onClick={() => handleSetStatus(c.id, "In-review")}
+                      className={c.status === "In review" ? "status-btn status-btn--active" : "status-btn"}
+                      onClick={() => handleSetStatus(c.id, "In review")}
                     >
-                      In-review
+                      In review
                     </button>
                     <button
                       type="button"
@@ -251,7 +279,7 @@ export default function AdminComplaintPage() {
               </div>
             ))}
 
-            {filteredComplaints.length === 0 && (
+            {!loading && filteredComplaints.length === 0 && (
               <div className="empty-state">
                 <strong>No complaints found</strong>
                 <span>Try searching another route, user, or issue type.</span>
@@ -492,7 +520,7 @@ export default function AdminComplaintPage() {
 
         .complaints-row {
           display: grid;
-          grid-template-columns: 1.2fr 0.9fr 1fr 1.6fr 0.9fr 0.8fr 1fr;
+          grid-template-columns: 1.2fr 0.9fr 1fr 1.6fr 0.9fr 0.8fr 1.4fr;
           gap: 12px;
           align-items: center;
           padding: 14px 14px;

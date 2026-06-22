@@ -12,104 +12,31 @@ import {
   onSnapshot,
   query,
   where,
+  orderBy,
   serverTimestamp,
   increment,
 } from "firebase/firestore";
 
-const BADGES = [
-  {
-    title: "Green Champion",
-    subtitle: "78% complete",
-    note: "Reach 3,000 points",
-    variant: "complete",
-  },
-  {
-    title: "Gold Collector",
-    subtitle: "Earned",
-    note: "100 verified pickups",
-    variant: "gold",
-  },
-  {
-    title: "Eco Contributor",
-    subtitle: "Earned",
-    note: "Recycle 50 kg",
-    variant: "eco",
-  },
-  {
-    title: "Plastic Buster",
-    subtitle: "Earned",
-    note: "Divert 25 kg of plastic",
-    variant: "plastic",
-  },
-];
+type BadgeLevel = {
+  target: number;
+  note: string;
+};
 
-const OFFERS = [
-  {
-    category: "Utilities",
-    badge: "50% OFF",
-    title: "50% off Utility Bill",
-    description: "Redeem for electricity savings up to Rs. 2,000.",
-    points: 300,
-    active: true,
-  },
-  {
-    category: "Shopping",
-    title: "Grocery Voucher",
-    description: "Rs. 2,500 voucher at Keells, Cargills, or Arpico.",
-    points: 400,
-    active: true,
-  },
-  {
-    category: "Shopping",
-    title: "Gift Card",
-    description: "Rs. 5,000 universal gift card.",
-    points: 500,
-    active: false,
-  },
-  {
-    category: "Transport",
-    title: "Bus Pass",
-    description: "One month free public transport pass.",
-    points: 350,
-    active: true,
-  },
-  {
-    category: "Food & Beverage",
-    title: "Coffee Voucher",
-    description: "5 free coffees at selected cafes.",
-    points: 150,
-    active: true,
-  },
-  {
-    category: "Telecom",
-    title: "Mobile Data Pack",
-    description: "10GB data bundle for Dialog / Mobitel.",
-    points: 200,
-    active: true,
-  },
-  {
-    category: "Utilities",
-    badge: "30% OFF",
-    title: "Water Bill Discount",
-    description: "30% off water bill up to Rs. 1,500.",
-    points: 250,
-    active: true,
-  },
-  {
-    category: "Shopping",
-    title: "Premium Gift Box",
-    description: "Eco-friendly products worth Rs. 3,000.",
-    points: 450,
-    active: true,
-  },
-];
+type Badge = {
+  id: string;
+  title: string;
+  type: "points" | "pickups" | "weight" | "plastic";
+  variant: string;
+  levels: BadgeLevel[];
+};
 
-function BadgeCard({ badge }: { badge: (typeof BADGES)[number] }) {
+function BadgeCard({ badge, progressInfo }: { badge: Badge; progressInfo: any }) {
+  const { subtitle, note, isMaxLevel } = progressInfo;
   return (
     <article className={`${styles.badgeCard} ${styles[`badgeCard_${badge.variant}`]}`}>
-      <div className={styles.badgeMeta}>{badge.subtitle}</div>
+      <div className={styles.badgeMeta}>{subtitle}</div>
       <h3 className={styles.badgeTitle}>{badge.title}</h3>
-      <p className={styles.badgeNote}>{badge.note}</p>
+      <p className={styles.badgeNote}>{note}</p>
     </article>
   );
 }
@@ -126,7 +53,6 @@ function OfferCard({
     <article className={`${styles.offerCard} ${offer.active ? "" : styles.offerCardDisabled}`}>
       <div className={styles.offerMeta}>
         <span>{offer.category}</span>
-        {offer.badge ? <span className={styles.offerBadge}>{offer.badge}</span> : null}
       </div>
       <h3 className={styles.offerTitle}>{offer.title}</h3>
       <p className={styles.offerDescription}>{offer.description}</p>
@@ -141,11 +67,14 @@ function OfferCard({
 }
 
 export default function ResidentRewardsPage() {
-  const { profile, user } = useAuth();
+  const { profile, user, loading } = useAuth();
   const [availablePoints, setAvailablePoints] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
   const [storeRewards, setStoreRewards] = useState<any[]>([]);
+  const [dbBadges, setDbBadges] = useState<Badge[]>([]);
+  const [loadingBadges, setLoadingBadges] = useState(true);
+  const [wasteCollections, setWasteCollections] = useState<any[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
   const [redeemName, setRedeemName] = useState("");
@@ -172,6 +101,78 @@ export default function ResidentRewardsPage() {
 
     return () => unsubscribe();
   }, []);
+
+  // Fetch badges
+  useEffect(() => {
+    const q = query(collection(db, "badges"), orderBy("createdAt", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      } as Badge));
+      setDbBadges(data);
+      setLoadingBadges(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch user waste collections
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "wasteCollections"), where("userId", "==", user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => doc.data());
+      setWasteCollections(data);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const stats = {
+    points: profile?.points || 0,
+    pickups: wasteCollections.length,
+    weight: wasteCollections.reduce((acc, curr) => acc + (curr.weight || 0), 0),
+    plastic: wasteCollections
+      .filter((w) => w.wasteType === "Recyclable")
+      .reduce((acc, curr) => acc + (curr.weight || 0) * 0.476, 0),
+  };
+
+  const getBadgeProgress = (badge: Badge) => {
+    const userValue = stats[badge.type as keyof typeof stats] || 0;
+    const levels = badge.levels || [];
+
+    // Find current level (highest achieved)
+    let currentLevelIndex = -1;
+    for (let i = 0; i < levels.length; i++) {
+      if (userValue >= levels[i].target) {
+        currentLevelIndex = i;
+      } else {
+        break;
+      }
+    }
+
+    const nextLevelIndex = currentLevelIndex + 1;
+    const isMaxLevel = nextLevelIndex >= levels.length;
+
+    if (isMaxLevel) {
+      return {
+        subtitle: "Earned",
+        note: "Max Level Reached",
+        isMaxLevel: true,
+      };
+    }
+
+    const nextLevel = levels[nextLevelIndex];
+    const prevTarget = currentLevelIndex === -1 ? 0 : levels[currentLevelIndex].target;
+    const progress = ((userValue - prevTarget) / (nextLevel.target - prevTarget)) * 100;
+    const clampedProgress = Math.min(Math.max(Math.round(progress), 0), 99);
+
+    return {
+      subtitle: `${clampedProgress}% complete`,
+      note: nextLevel.note,
+      isMaxLevel: false,
+      progress: clampedProgress,
+    };
+  };
 
   const handleRedeem = (offer: any) => {
     if (!offer.active) return;
@@ -214,6 +215,23 @@ export default function ResidentRewardsPage() {
         createdAt: serverTimestamp(),
       });
 
+      // 3. Notify all admins
+      const adminsQuery = query(collection(db, "users"), where("role", "==", "admin"));
+      const adminsSnap = await getDocs(adminsQuery);
+      const batch = writeBatch(db);
+      adminsSnap.docs.forEach((adminDoc) => {
+        const notifRef = doc(collection(db, "notifications"));
+        batch.set(notifRef, {
+          userId: adminDoc.id,
+          title: "Reward Redemption",
+          description: `${redeemName || profile?.fullName || "User"} ${redeemNic || profile?.nic || ""} redeemed ${offer.title}`,
+          type: "reward",
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+
       setMessage(`Successfully redeemed ${offer.title}!`);
       setIsError(false);
     } catch (error) {
@@ -236,9 +254,21 @@ export default function ResidentRewardsPage() {
         </div>
 
         <div className={styles.badges}>
-          {BADGES.map((badge) => (
-            <BadgeCard badge={badge} key={badge.title} />
+          {dbBadges.map((badge) => (
+            <BadgeCard
+              badge={badge}
+              key={badge.id}
+              progressInfo={getBadgeProgress(badge)}
+            />
           ))}
+          {!loadingBadges && dbBadges.length === 0 && (
+             <div className={styles.emptyState} style={{ background: 'transparent', border: '1px dashed rgba(255,255,255,0.3)', color: '#fff' }}>
+               No badges available.
+             </div>
+          )}
+          {loadingBadges && (
+            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>Loading badges...</div>
+          )}
         </div>
       </section>
 
@@ -263,9 +293,11 @@ export default function ResidentRewardsPage() {
         ) : null}
 
         <div className={styles.offerGrid}>
-          {storeRewards.length > 0
-            ? storeRewards.map((offer) => <OfferCard offer={offer} key={offer.id || offer.title} onRedeem={handleRedeem} />)
-            : OFFERS.map((offer) => <OfferCard offer={offer} key={offer.title} onRedeem={handleRedeem} />)}
+          {storeRewards.length > 0 ? (
+            storeRewards.map((offer) => <OfferCard offer={offer} key={offer.id || offer.title} onRedeem={handleRedeem} />)
+          ) : (
+            <div className={styles.emptyState}>No rewards available at the moment.</div>
+          )}
         </div>
       </section>
 
