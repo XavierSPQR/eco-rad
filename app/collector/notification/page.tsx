@@ -2,14 +2,36 @@
 
 import Link from "next/link";
 import { RoleGuard } from "@/components/RoleGuard";
+import { useAuth } from "@/context/AuthContext";
+import { useState, useEffect } from "react";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function CollectorNotificationPage() {
+  const { profile, user } = useAuth();
+  const [vehicleData, setVehicleData] = useState<any>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchTruck = async () => {
+      try {
+        const vehicleDoc = await getDoc(doc(db, "activeVehicles", user.uid));
+        if (vehicleDoc.exists()) {
+          setVehicleData(vehicleDoc.data());
+        }
+      } catch (error) {
+        console.error("Error fetching vehicle:", error);
+      }
+    };
+    fetchTruck();
+  }, [user]);
+
   const notifications = [
     {
       id: 1,
       type: "truck",
       title: "Truck arriving in 12 min",
-      description: "LK-4521 is approaching Nugegoda zone B",
+      description: `${vehicleData?.id || "Truck"} is approaching ${vehicleData?.area || "your zone"}`,
       time: "2m ago",
       iconBg: "bg-[#E6F4EA]",
       iconColor: "text-[#2E7D32]",
@@ -45,7 +67,7 @@ export default function CollectorNotificationPage() {
       id: 5,
       type: "truck",
       title: "Truck arriving in 12 min",
-      description: "LK-4521 is approaching Nugegoda zone B",
+      description: `${vehicleData?.id || "Truck"} is approaching ${vehicleData?.area || "your zone"}`,
       time: "2m ago",
       iconBg: "bg-[#E6F4EA]",
       iconColor: "text-[#2E7D32]",
@@ -161,9 +183,11 @@ export default function CollectorNotificationPage() {
           </div>
 
           <div className="flex items-center gap-3 bg-white/60 px-4 py-1.5 rounded-full border border-white/40 shadow-sm">
-            <div className="w-9 h-9 bg-[#2E7D32] rounded-full flex items-center justify-center text-white text-xs font-bold shadow-inner">SF</div>
+            <div className="w-9 h-9 bg-[#2E7D32] rounded-full flex items-center justify-center text-white text-xs font-bold shadow-inner">
+              {profile?.fullName ? profile.fullName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) : "C"}
+            </div>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-gray-800 leading-tight">Sanjeewa Fernando</span>
+              <span className="text-sm font-bold text-gray-800 leading-tight">{profile?.fullName || "Collector"}</span>
               <span className="text-[10px] text-gray-500 font-medium tracking-wide">Collector</span>
             </div>
           </div>
@@ -176,9 +200,9 @@ export default function CollectorNotificationPage() {
             <div className="relative z-10">
               <span className="text-[11px] font-bold text-[#2E7D32] uppercase tracking-[0.2em] mb-1 block">Collector</span>
               <h1 className="text-[36px] font-bold text-gray-800 leading-tight">
-                Hello,<span className="text-[#55B56F]">Sanjeewa!</span>
+                Hello,<span className="text-[#55B56F]">{profile?.fullName?.split(" ")[0] || "Collector"}!</span>
               </h1>
-              <p className="text-gray-500 text-sm font-medium mt-1">Working with Truck LK-4521 · Zone Colombo South</p>
+              <p className="text-gray-500 text-sm font-medium mt-1">Working with Truck {vehicleData?.id || "N/A"} · Zone {vehicleData?.area || profile?.district || "N/A"}</p>
 
               <div className="flex items-center gap-3 mt-5">
                 <div className="bg-[#BCE4C0] px-3 py-1 rounded-full flex items-center gap-2">

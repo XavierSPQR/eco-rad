@@ -11,15 +11,12 @@ export function useLiveTracking(user: any, profile: any) {
         const { latitude, longitude } = position.coords;
         const vehicleRef = doc(db, "activeVehicles", user.uid);
         
-        // We use setDoc with merge: true to create or update the document
+        // We use setDoc with merge: true to create or update the document.
+        // Managed exclusively by admin: id, driver, area.
         setDoc(
           vehicleRef,
           {
-            id: profile?.truckId || "LK-4521", // Fallback to LK-4521 if not in profile
-            driver: profile?.fullName || "Collector",
-            area: profile?.district || "Colombo",
             status: "Live",
-            eta: "N/A", // This could be calculated later dynamically
             lat: latitude,
             lng: longitude,
             updatedAt: serverTimestamp(),

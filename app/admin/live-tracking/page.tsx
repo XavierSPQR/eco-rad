@@ -83,26 +83,26 @@ export default function AdminLiveTrackingPage() {
     return () => unsubscribe();
   }, []);
 
+  const activeVehicles = useMemo(() => {
+    return vehicles.filter(v => v.status !== "Offline");
+  }, [vehicles]);
+
   const filteredVehicles = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
     if (!normalizedQuery) {
-      return vehicles;
+      return activeVehicles;
     }
 
-    return vehicles.filter((vehicle) =>
+    return activeVehicles.filter((vehicle) =>
       [vehicle.id, vehicle.driver, vehicle.area, vehicle.status].some((value) =>
         String(value || "").toLowerCase().includes(normalizedQuery),
       ),
     );
-  }, [query, vehicles]);
+  }, [query, activeVehicles]);
 
   const metrics = [
-    { label: "Total users", value: "12,840" },
-    { label: "Active drivers", value: vehicles.length.toString() },
-    { label: "Pickups today", value: "1,206" },
-    { label: "Verified complaints", value: "94" },
-    { label: "Monthly waste", value: "284 t" },
+    { label: "Active drivers", value: activeVehicles.length.toString() },
   ];
 
   return (
@@ -515,7 +515,7 @@ export default function AdminLiveTrackingPage() {
 
         .admin-metrics {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+          grid-template-columns: repeat(1, minmax(0, 240px));
           gap: 18px;
         }
 
