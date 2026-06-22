@@ -51,9 +51,6 @@ export default function AdminRewardStoreManagementPage() {
   const descRef = useRef<HTMLTextAreaElement | null>(null);
   const imageRef = useRef<HTMLInputElement | null>(null);
   const quantityRef = useRef<HTMLInputElement | null>(null);
-  const residentsRef = useRef<HTMLInputElement | null>(null);
-  const driversRef = useRef<HTMLInputElement | null>(null);
-  const collectorsRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, "rewards"), orderBy("createdAt", "desc"));
@@ -89,10 +86,7 @@ export default function AdminRewardStoreManagementPage() {
         imageUrl = await getDownloadURL(snapshot.ref);
       }
 
-      const audiences = [] as string[];
-      if (residentsRef.current?.checked) audiences.push("residents");
-      if (driversRef.current?.checked) audiences.push("drivers");
-      if (collectorsRef.current?.checked) audiences.push("collectors");
+      const audiences = ["residents"];
 
       await addDoc(collection(db, "rewards"), {
         title,
@@ -114,9 +108,6 @@ export default function AdminRewardStoreManagementPage() {
       if (descRef.current) descRef.current.value = "";
       if (quantityRef.current) quantityRef.current.value = "";
       if (imageRef.current) imageRef.current.value = "";
-      if (residentsRef.current) residentsRef.current.checked = true;
-      if (driversRef.current) driversRef.current.checked = true;
-      if (collectorsRef.current) collectorsRef.current.checked = true;
     } catch (error) {
       console.error("Error adding reward:", error);
       alert("Failed to add reward. Please try again.");
@@ -208,12 +199,6 @@ export default function AdminRewardStoreManagementPage() {
 
                 <label htmlFor="reward-description" style={{ fontWeight: 700, color: "#17350f" }}>Short description</label>
                 <textarea id="reward-description" ref={descRef} placeholder="One-line description" rows={3} className="reward-input" required />
-
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
-                  <label style={{ display: "inline-flex", gap: 8, alignItems: "center", fontSize: 14 }}><input ref={residentsRef} defaultChecked type="checkbox" /> Residents</label>
-                  <label style={{ display: "inline-flex", gap: 8, alignItems: "center", fontSize: 14 }}><input ref={driversRef} defaultChecked type="checkbox" /> Drivers</label>
-                  <label style={{ display: "inline-flex", gap: 8, alignItems: "center", fontSize: 14 }}><input ref={collectorsRef} defaultChecked type="checkbox" /> Collectors</label>
-                </div>
               </div>
 
               <div style={{ display: "grid", gap: 8 }}>

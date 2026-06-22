@@ -43,67 +43,6 @@ const BADGES = [
   },
 ];
 
-const OFFERS = [
-  {
-    category: "Utilities",
-    badge: "50% OFF",
-    title: "50% off Utility Bill",
-    description: "Redeem for electricity savings up to Rs. 2,000.",
-    points: 300,
-    active: true,
-  },
-  {
-    category: "Shopping",
-    title: "Grocery Voucher",
-    description: "Rs. 2,500 voucher at Keells, Cargills, or Arpico.",
-    points: 400,
-    active: true,
-  },
-  {
-    category: "Shopping",
-    title: "Gift Card",
-    description: "Rs. 5,000 universal gift card.",
-    points: 500,
-    active: false,
-  },
-  {
-    category: "Transport",
-    title: "Bus Pass",
-    description: "One month free public transport pass.",
-    points: 350,
-    active: true,
-  },
-  {
-    category: "Food & Beverage",
-    title: "Coffee Voucher",
-    description: "5 free coffees at selected cafes.",
-    points: 150,
-    active: true,
-  },
-  {
-    category: "Telecom",
-    title: "Mobile Data Pack",
-    description: "10GB data bundle for Dialog / Mobitel.",
-    points: 200,
-    active: true,
-  },
-  {
-    category: "Utilities",
-    badge: "30% OFF",
-    title: "Water Bill Discount",
-    description: "30% off water bill up to Rs. 1,500.",
-    points: 250,
-    active: true,
-  },
-  {
-    category: "Shopping",
-    title: "Premium Gift Box",
-    description: "Eco-friendly products worth Rs. 3,000.",
-    points: 450,
-    active: true,
-  },
-];
-
 function BadgeCard({ badge }: { badge: (typeof BADGES)[number] }) {
   return (
     <article className={`${styles.badgeCard} ${styles[`badgeCard_${badge.variant}`]}`}>
@@ -126,7 +65,6 @@ function OfferCard({
     <article className={`${styles.offerCard} ${offer.active ? "" : styles.offerCardDisabled}`}>
       <div className={styles.offerMeta}>
         <span>{offer.category}</span>
-        {offer.badge ? <span className={styles.offerBadge}>{offer.badge}</span> : null}
       </div>
       <h3 className={styles.offerTitle}>{offer.title}</h3>
       <p className={styles.offerDescription}>{offer.description}</p>
@@ -263,9 +201,11 @@ export default function ResidentRewardsPage() {
         ) : null}
 
         <div className={styles.offerGrid}>
-          {storeRewards.length > 0
-            ? storeRewards.map((offer) => <OfferCard offer={offer} key={offer.id || offer.title} onRedeem={handleRedeem} />)
-            : OFFERS.map((offer) => <OfferCard offer={offer} key={offer.title} onRedeem={handleRedeem} />)}
+          {storeRewards.length > 0 ? (
+            storeRewards.map((offer) => <OfferCard offer={offer} key={offer.id || offer.title} onRedeem={handleRedeem} />)
+          ) : (
+            <div className={styles.emptyState}>No rewards available at the moment.</div>
+          )}
         </div>
       </section>
 
