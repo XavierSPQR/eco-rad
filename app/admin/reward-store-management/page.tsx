@@ -72,7 +72,16 @@ export default function AdminRewardStoreManagementPage() {
     const category = categoryRef.current?.value?.trim() ?? "General";
     const pointsRequired = Number.parseInt(pointsRef.current?.value ?? "0", 10) || 0;
     const description = descRef.current?.value ?? "";
-    const quantity = Number.parseInt(quantityRef.current?.value ?? "0", 10) || null;
+    const qtyVal = quantityRef.current?.value?.trim();
+    let quantity = null;
+
+    if (qtyVal !== "" && qtyVal !== undefined) {
+      const parsed = Number.parseInt(qtyVal, 10);
+      if (Number.isNaN(parsed) || parsed < 0) {
+        return alert("Please enter a valid non-negative number for quantity.");
+      }
+      quantity = parsed;
+    }
 
     if (!title) return alert("Please provide a reward title.");
 

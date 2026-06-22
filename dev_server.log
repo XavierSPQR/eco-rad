@@ -2,36 +2,16 @@
 > eco-rad@0.1.0 dev
 > next dev
 
+⚠ Port 3000 is in use by an unknown process, using available port 3001 instead.
 ▲ Next.js 16.2.6 (Turbopack)
-- Local:         http://localhost:3000
-- Network:       http://192.168.0.2:3000
-✓ Ready in 554ms
-Attention: Next.js now collects completely anonymous telemetry regarding usage.
-This information is used to shape Next.js' roadmap and prioritize features.
-You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
-https://nextjs.org/telemetry
+- Local:         h GET /auth?role=admin 200 in 1327ms (next.js: 512ms, application-code: 814ms)
+ms
+⨯ Another next dev server is already running.
 
+- Local:        http://localhost:3000
+- PID:          167277
+- Dir:          /app
+- Log:          .next/dev/logs/next-development.log
 
-○ Compiling /auth ...
- GET /auth?role=admin 200 in 6.3s (next.js: 5.4s, application-code: 916ms)
- GET /auth?role=admin 200 in 102ms (next.js: 6ms, application-code: 96ms)
- GET /admin/overview 200 in 944ms (next.js: 870ms, application-code: 74ms)
- GET /admin/notification 200 in 830ms (next.js: 719ms, application-code: 111ms)
- GET /auth?role=admin 200 in 74ms (next.js: 4ms, application-code: 69ms)
- GET /admin/overview 200 in 39ms (next.js: 5ms, application-code: 34ms)
- GET /admin/notification 200 in 73ms (next.js: 4ms, application-code: 69ms)
- GET /auth?role=collector 200 in 72ms (next.js: 5ms, application-code: 67ms)
- GET /collector 200 in 869ms (next.js: 821ms, application-code: 48ms)
-[browser] Error watching location: [object GeolocationPositionError]
-    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:28:17)
-  26 |       },
-  27 |       (error) => {
-> 28 |         console.error("Error watching location:", error);
-     |                 ^
-  29 |       },
-  30 |       {
-  31 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:28:17)
- GET /collector/notification 200 in 790ms (next.js: 703ms, application-code: 87ms)
- GET /auth?role=resident 200 in 143ms (next.js: 4ms, application-code: 140ms)
- GET /resident 200 in 908ms (next.js: 866ms, application-code: 42ms)
- GET /resident/notifications 200 in 859ms (next.js: 753ms, application-code: 106ms)
+Run kill 167277 to stop it.
+[?25h
