@@ -13,9 +13,6 @@ import {
   onSnapshot,
   query,
   orderBy,
-  doc,
-  updateDoc,
-  serverTimestamp,
 } from "firebase/firestore";
 
 const sidebarItems = [
@@ -45,7 +42,6 @@ export default function AdminRewardRedeemManagementPage() {
     residentName: string;
     nic: string;
     rewardName: string;
-    status: "pending" | "completed";
   };
 
   const [records, setRecords] = useState<RewardRedeemRecord[]>([]);
@@ -66,29 +62,6 @@ export default function AdminRewardRedeemManagementPage() {
     return () => unsubscribe();
   }, []);
 
-  const setCompleted = async (id: string) => {
-    try {
-      await updateDoc(doc(db, "redemptions", id), {
-        status: "completed",
-        updatedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error("Error updating redemption status:", error);
-      alert("Failed to update status.");
-    }
-  };
-
-  const setPending = async (id: string) => {
-    try {
-      await updateDoc(doc(db, "redemptions", id), {
-        status: "pending",
-        updatedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error("Error updating redemption status:", error);
-      alert("Failed to update status.");
-    }
-  };
 
 
   return (
@@ -183,8 +156,6 @@ export default function AdminRewardRedeemManagementPage() {
                       <th style={{ padding: 8 }}>Name</th>
                       <th style={{ padding: 8 }}>NIC</th>
                       <th style={{ padding: 8 }}>Reward</th>
-                      <th style={{ padding: 8 }}>Status</th>
-                      <th style={{ padding: 8 }}>Controls</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -205,24 +176,6 @@ export default function AdminRewardRedeemManagementPage() {
                           <td style={{ padding: 8 }}>{r.residentName}</td>
                           <td style={{ padding: 8 }}>{r.nic}</td>
                           <td style={{ padding: 8 }}>{r.rewardName}</td>
-                          <td style={{ padding: 8 }}>{r.status ?? "pending"}</td>
-
-                          <td style={{ padding: 8 }}>
-                            {r.status === "completed" ? (
-                              <button
-                                onClick={() => {
-                                  const ok = window.confirm("Mark this redemption as pending?");
-                                  if (!ok) return;
-                                  setPending(r.id);
-                                }}
-                                className="admin-primary"
-                              >
-                                Mark as Pending
-                              </button>
-                            ) : (
-                              <button onClick={() => setCompleted(r.id)} className="admin-primary">Mark as Completed</button>
-                            )}
-                          </td>
                         </tr>
                       ))}
                   </tbody>
