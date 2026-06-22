@@ -48,6 +48,7 @@ export default function CollectorTasksPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "completed">("all");
+  const [vehicleData, setVehicleData] = useState<any>(null);
 
   // Start live tracking
   useLiveTracking(user, profile);
@@ -108,6 +109,20 @@ export default function CollectorTasksPage() {
     }, (error) => {
       console.error("Error fetching completed tasks:", error);
     });
+
+    // Fetch Truck ID and Area from activeVehicles
+    const fetchTruck = async () => {
+      try {
+        const { getDoc, doc } = await import("firebase/firestore");
+        const vehicleDoc = await getDoc(doc(db, "activeVehicles", user.uid));
+        if (vehicleDoc.exists()) {
+          setVehicleData(vehicleDoc.data());
+        }
+      } catch (error) {
+        console.error("Error fetching vehicle:", error);
+      }
+    };
+    fetchTruck();
 
     return () => {
       unsubscribePending();
@@ -258,7 +273,7 @@ export default function CollectorTasksPage() {
               <h1 className="text-[36px] font-bold text-gray-800 leading-tight">
                 Hello,<span className="text-[#55B56F]">{profile?.fullName?.split(" ")[0] || "Collector"}!</span>
               </h1>
-              <p className="text-gray-500 text-sm font-medium mt-1">Working with Truck LK-4521 · Zone Colombo South</p>
+              <p className="text-gray-500 text-sm font-medium mt-1">Working with Truck {vehicleData?.id || "N/A"} · Zone {vehicleData?.area || profile?.district || "N/A"}</p>
             </div>
 
             <div className="relative w-40 h-40 flex items-center justify-center">

@@ -26,7 +26,7 @@ export default function CollectorDashboard() {
   });
   const [allPendingCount, setAllPendingCount] = useState(0);
   const [completedTodayCount, setCompletedTodayCount] = useState(0);
-  const [truckId, setTruckId] = useState("LK-4521");
+  const [vehicleData, setVehicleData] = useState<any>(null);
 
   // Start live tracking
   useLiveTracking(user, profile);
@@ -34,12 +34,12 @@ export default function CollectorDashboard() {
   useEffect(() => {
     if (!user) return;
 
-    // Fetch Truck ID from activeVehicles
+    // Fetch Truck ID and Area from activeVehicles
     const fetchTruck = async () => {
       try {
         const vehicleDoc = await getDoc(doc(db, "activeVehicles", user.uid));
         if (vehicleDoc.exists()) {
-          setTruckId(vehicleDoc.data().id || "LK-4521");
+          setVehicleData(vehicleDoc.data());
         }
       } catch (error) {
         console.error("Error fetching vehicle:", error);
@@ -144,7 +144,7 @@ export default function CollectorDashboard() {
           <div>
             <p className={styles.role}>COLLECTOR</p>
             <h1 className={styles.greeting}>Hello, {profile?.fullName || "Collector"}!</h1>
-            <p className={styles.sub}>Working with Truck {truckId} · Zone {profile?.district || "Colombo South"}</p>
+            <p className={styles.sub}>Working with Truck {vehicleData?.id || "N/A"} · Zone {vehicleData?.area || profile?.district || "N/A"}</p>
           </div>
           <div className={styles.kpiRing} style={{
             background: `conic-gradient(#2e7d32 0 ${progress}%, #e6f6ea ${progress}% 100%)`
