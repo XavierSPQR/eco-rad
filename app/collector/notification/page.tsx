@@ -6,10 +6,26 @@ import { useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
+import { subscribeToNotifications, markAllRead, Notification } from "@/lib/notifications";
+
+function formatTime(createdAt: any) {
+  if (!createdAt) return "Just now";
+  const date = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
+  const now = new Date();
+  const diffInSecs = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSecs < 60) return "Just now";
+  if (diffInSecs < 3600) return `${Math.floor(diffInSecs / 60)}m ago`;
+  if (diffInSecs < 86400) return `${Math.floor(diffInSecs / 3600)}h ago`;
+  if (diffInSecs < 172800) return "Yesterday";
+  return date.toLocaleDateString();
+}
 
 export default function CollectorNotificationPage() {
   const { profile, user } = useAuth();
   const [vehicleData, setVehicleData] = useState<any>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
@@ -24,73 +40,20 @@ export default function CollectorNotificationPage() {
       }
     };
     fetchTruck();
+
+    const unsubscribe = subscribeToNotifications(user.uid, (items) => {
+      setNotifications(items);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [user]);
 
-  const notifications = [
-    {
-      id: 1,
-      type: "truck",
-      title: "Truck arriving in 12 min",
-      description: `${vehicleData?.id || "Truck"} is approaching ${vehicleData?.area || "your zone"}`,
-      time: "2m ago",
-      iconBg: "bg-[#E6F4EA]",
-      iconColor: "text-[#2E7D32]",
-    },
-    {
-      id: 2,
-      type: "verified",
-      title: "Verified: BC10234",
-      description: "+136 points credited to your wallet",
-      time: "1h ago",
-      iconBg: "bg-[#E6F4EA]",
-      iconColor: "text-[#2E7D32]",
-    },
-    {
-      id: 3,
-      type: "reward",
-      title: "Reward unlocked",
-      description: "Free reusable tote at Keells Super",
-      time: "Yesterday",
-      iconBg: "bg-[#FFF4E5]",
-      iconColor: "text-[#D97706]",
-    },
-    {
-      id: 4,
-      type: "complaint",
-      title: "Complaint resolved",
-      description: "Overflowing bin - Borella reported by you",
-      time: "2d ago",
-      iconBg: "bg-[#E6F4EA]",
-      iconColor: "text-[#2E7D32]",
-    },
-    {
-      id: 5,
-      type: "truck",
-      title: "Truck arriving in 12 min",
-      description: `${vehicleData?.id || "Truck"} is approaching ${vehicleData?.area || "your zone"}`,
-      time: "2m ago",
-      iconBg: "bg-[#E6F4EA]",
-      iconColor: "text-[#2E7D32]",
-    },
-    {
-      id: 6,
-      type: "verified",
-      title: "Verified: BC10234",
-      description: "+136 points credited to your wallet",
-      time: "1h ago",
-      iconBg: "bg-[#E6F4EA]",
-      iconColor: "text-[#2E7D32]",
-    },
-    {
-      id: 7,
-      type: "reward",
-      title: "Reward unlocked",
-      description: "Free reusable tote at Keells Super",
-      time: "Yesterday",
-      iconBg: "bg-[#FFF4E5]",
-      iconColor: "text-[#D97706]",
-    },
-  ];
+  const handleMarkAllRead = async () => {
+    if (user) {
+      await markAllRead(user.uid);
+    }
+  };
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -120,16 +83,36 @@ export default function CollectorNotificationPage() {
             <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
           </svg>
         );
-      case "complaint":
+      case "resolved":
+      case "announcement":
         return (
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-            <line x1="12" y1="9" x2="12" y2="13"></line>
-            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
           </svg>
         );
       default:
-        return null;
+        return (
+           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        );
+    }
+  };
+
+  const getIconBg = (type: string) => {
+    switch (type) {
+      case "reward": return "bg-[#FFF4E5]";
+      default: return "bg-[#E6F4EA]";
+    }
+  };
+
+  const getIconColor = (type: string) => {
+    switch (type) {
+      case "reward": return "text-[#D97706]";
+      default: return "text-[#2E7D32]";
     }
   };
 
@@ -171,16 +154,7 @@ export default function CollectorNotificationPage() {
 
         {/* Top Bar */}
         <div className="flex justify-between items-center mb-6">
-          <div className="relative w-[450px]">
-            <span className="absolute inset-y-0 left-4 flex items-center text-gray-400">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-            </span>
-            <input
-              type="text"
-              placeholder="Search collections, complaints, trucks..."
-              className="w-full pl-11 pr-4 py-2.5 bg-white rounded-full text-[13px] focus:outline-none shadow-sm border-none placeholder:text-gray-400"
-            />
-          </div>
+          <div className="w-[450px]" />
 
           <div className="flex items-center gap-3 bg-white/60 px-4 py-1.5 rounded-full border border-white/40 shadow-sm">
             <div className="w-9 h-9 bg-[#2E7D32] rounded-full flex items-center justify-center text-white text-xs font-bold shadow-inner">
@@ -203,17 +177,6 @@ export default function CollectorNotificationPage() {
                 Hello,<span className="text-[#55B56F]">{profile?.fullName?.split(" ")[0] || "Collector"}!</span>
               </h1>
               <p className="text-gray-500 text-sm font-medium mt-1">Working with Truck {vehicleData?.id || "N/A"} · Zone {vehicleData?.area || profile?.district || "N/A"}</p>
-
-              <div className="flex items-center gap-3 mt-5">
-                <div className="bg-[#BCE4C0] px-3 py-1 rounded-full flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[#2E7D32]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"></path></svg>
-                  <span className="text-[11px] font-bold text-[#2E7D32]">Rank #4 this month</span>
-                </div>
-                <div className="bg-[#BCE4C0] px-3 py-1 rounded-full flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[#2E7D32]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 6l-9.5 9.5-5-5L1 18"></path></svg>
-                  <span className="text-[11px] font-bold text-[#2E7D32]">Score 92.4</span>
-                </div>
-              </div>
             </div>
 
             <div className="relative w-40 h-40 flex items-center justify-center">
@@ -237,21 +200,36 @@ export default function CollectorNotificationPage() {
 
           {/* Notifications Section */}
           <div className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-white/60 min-h-[400px]">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+               <h2 className="text-lg font-bold text-gray-800">Recent Notifications</h2>
+               <button
+                 onClick={handleMarkAllRead}
+                 className="text-xs font-bold text-[#2E7D32] hover:underline"
+               >
+                 Mark all as read
+               </button>
+            </div>
             <div className="divide-y divide-gray-100">
-              {notifications.map((notif) => (
-                <div key={notif.id} className="p-6 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
-                  <div className="flex items-center gap-5">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${notif.iconBg} ${notif.iconColor}`}>
-                      {getIcon(notif.type)}
+              {loading ? (
+                 <div className="p-8 text-center text-gray-400 font-medium">Loading notifications...</div>
+              ) : notifications.length === 0 ? (
+                 <div className="p-8 text-center text-gray-400 font-medium">No notifications yet.</div>
+              ) : (
+                notifications.map((notif) => (
+                  <div key={notif.id} className={`p-6 flex items-center justify-between hover:bg-gray-50/50 transition-colors ${!notif.read ? 'bg-[#F9FFF9]' : ''}`}>
+                    <div className="flex items-center gap-5">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${getIconBg(notif.type)} ${getIconColor(notif.type)}`}>
+                        {getIcon(notif.type)}
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <h3 className="text-[15px] font-bold text-gray-800">{notif.title}</h3>
+                        <p className="text-[13px] text-gray-500 font-medium">{notif.description}</p>
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      <h3 className="text-[15px] font-bold text-gray-800">{notif.title}</h3>
-                      <p className="text-[13px] text-gray-500 font-medium">{notif.description}</p>
-                    </div>
+                    <span className="text-[12px] font-bold text-gray-400">{formatTime(notif.createdAt)}</span>
                   </div>
-                  <span className="text-[12px] font-bold text-gray-400">{notif.time}</span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
             <div className="p-8"></div>
           </div>

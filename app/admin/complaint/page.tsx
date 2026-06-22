@@ -4,7 +4,7 @@ import Link from "next/link";
 import { RoleGuard } from "@/components/RoleGuard";
 import { usePathname } from "next/navigation";
 import { useMemo, useState, useEffect } from "react";
-import { collection, getDocs, doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, updateDoc, serverTimestamp, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 
@@ -119,6 +119,24 @@ export default function AdminComplaintPage() {
         status: nextStatus,
         updatedAt: serverTimestamp(),
       });
+
+      if (nextStatus === "Resolved") {
+        const complaintSnap = await getDoc(doc(db, "complaints", id));
+        if (complaintSnap.exists()) {
+          const complaintData = complaintSnap.data();
+          if (complaintData.userId) {
+            await addDoc(collection(db, "notifications"), {
+              userId: complaintData.userId,
+              title: complaintData.subject || "Complaint Update",
+              description: `Your issue ${complaintData.description || ""} is solved`,
+              type: "resolved",
+              read: false,
+              createdAt: serverTimestamp(),
+            });
+          }
+        }
+      }
+
       setComplaints((items) => items.map((c) => (c.id === id ? { ...c, status: nextStatus } : c)));
     } catch (error) {
       console.error("Error updating complaint status:", error);

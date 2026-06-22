@@ -151,10 +151,8 @@ export default function AdminOverviewPage() {
     try {
       let targetUsersQuery;
       if (sendTo === "all") {
-        targetUsersQuery = query(collection(db, "users"));
-      } else if (sendTo === "drivers") {
-        targetUsersQuery = query(collection(db, "users"), where("role", "in", ["admin", "collector"])); // Assuming drivers are collectors/admins? Actually drivers are usually collectors.
-      } else if (sendTo === "collectors") {
+        targetUsersQuery = query(collection(db, "users"), where("role", "in", ["resident", "collector"]));
+      } else if (sendTo === "drivers" || sendTo === "collectors") {
         targetUsersQuery = query(collection(db, "users"), where("role", "==", "collector"));
       } else if (sendTo === "residents") {
         targetUsersQuery = query(collection(db, "users"), where("role", "==", "resident"));
@@ -177,8 +175,9 @@ export default function AdminOverviewPage() {
           batch.set(notifRef, {
             userId: userDoc.id,
             title: "System Announcement",
-            message: message,
-            status: "unread",
+            description: message,
+            type: "announcement",
+            read: false,
             createdAt: serverTimestamp(),
           });
         });

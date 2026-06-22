@@ -215,6 +215,23 @@ export default function ResidentRewardsPage() {
         createdAt: serverTimestamp(),
       });
 
+      // 3. Notify all admins
+      const adminsQuery = query(collection(db, "users"), where("role", "==", "admin"));
+      const adminsSnap = await getDocs(adminsQuery);
+      const batch = writeBatch(db);
+      adminsSnap.docs.forEach((adminDoc) => {
+        const notifRef = doc(collection(db, "notifications"));
+        batch.set(notifRef, {
+          userId: adminDoc.id,
+          title: "Reward Redemption",
+          description: `${redeemName || profile?.fullName || "User"} ${redeemNic || profile?.nic || ""} redeemed ${offer.title}`,
+          type: "reward",
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+
       setMessage(`Successfully redeemed ${offer.title}!`);
       setIsError(false);
     } catch (error) {
