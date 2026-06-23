@@ -1,0 +1,112 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'admin';
+    }
+
+    function isCollector() {
+      return isSignedIn() && getUserData().role == 'collector';
+    }
+
+    // Rules for 'users' collection
+    match /users/{userId} {
+      // Residents can read their own profile, Admins can read all.
+      // Added: Allow reading admin profiles so residents can find admins to notify.
+      // Added: Allow collectors to read other collectors for the leaderboard.
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId ||
+        isAdmin() ||
+        resource.data.role == 'admin' ||
+        (isCollector() && resource.data.role == 'collector')
+      );
+
+      allow create: if isSignedIn() && request.auth.uid == userId;
+
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        isCollector() ||
+        (request.auth.uid == userId &&
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['role', 'uid', 'badgeLevel', 'badgeProgress', 'residences']))
+      );
+    }
+
+    // Rules for 'complaints' collection
+    match /complaints/{complaintId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // Rules for 'pickupRequests' collection
+    match /pickupRequests/{requestId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin() || isCollector());
+      allow update: if isAdmin() || isCollector() || (isSignedIn() && request.auth.uid == resource.data.userId && request.resource.data.status == 'cancelled');
+      allow delete: if isAdmin();
+    }
+
+    // Rules for 'wasteCollections' collection
+    match /wasteCollections/{collectionId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin() || isCollector());
+      allow create: if true;
+      allow update, delete: if isAdmin() || isCollector();
+    }
+
+    // Rules for 'notifications' collection
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Updated: Allow any signed-in user (Residents/Collectors) to create notifications for admins.
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Rules for 'rewards' collection (global catalog)
+    match /rewards/{rewardId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      // Updated: Allow residents to update the 'quantity' field during redemption.
+      allow update: if isAdmin() || (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantity', 'updatedAt']));
+    }
+
+    // Rules for 'badges' collection (dynamic badges)
+    match /badges/{badgeId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Rules for 'redemptions' collection
+    match /redemptions/{redemptionId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    match /activeVehicles/{collectorId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || (isCollector() && request.auth.uid == collectorId);
+    }
+
+    // Rules for 'schedules' collection
+    match /schedules/{scheduleId} {
+      // Updated: Allow collectors to read all schedules for leaderboard calculation.
+      allow read: if isSignedIn() && (isAdmin() || isCollector());
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isCollector() && resource.data.collectorId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+  }
+}
