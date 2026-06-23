@@ -10,6 +10,7 @@ import {
   onSnapshot,
   doc,
   getDoc,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
@@ -47,71 +48,122 @@ export default function CollectorDashboard() {
     };
     fetchTruck();
 
-    // Fetch stats that can be non-realtime or are large
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    // Fetch stats
     const fetchStats = async () => {
       try {
-        // Total Completed by this collector (ever)
+        // Total Completed by this collector (ever) - Pickups
         const qCompletedAll = query(
           collection(db, "pickupRequests"),
           where("status", "==", "completed"),
           where("collectorId", "==", user.uid)
         );
         const completedSnap = await getCountFromServer(qCompletedAll);
-        setStats(prev => ({ ...prev, completed: completedSnap.data().count }));
+
+        // Total Completed by this collector (ever) - Schedules
+        const qSchedulesCompletedAll = query(
+          collection(db, "schedules"),
+          where("status", "==", "completed"),
+          where("collectorId", "==", user.uid)
+        );
+        const schedulesCompletedSnap = await getCountFromServer(qSchedulesCompletedAll);
+
+        setStats(prev => ({
+          ...prev,
+          completed: completedSnap.data().count + schedulesCompletedSnap.data().count
+        }));
 
         // Verifications (global)
         const qCollections = collection(db, "wasteCollections");
         const collectionsSnap = await getCountFromServer(qCollections);
         setStats(prev => ({ ...prev, verifications: collectionsSnap.data().count }));
-
-        // Completed Today (optimized)
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
-        const qCompletedToday = query(
-          collection(db, "pickupRequests"),
-          where("status", "==", "completed"),
-          where("collectorId", "==", user.uid),
-          where("updatedAt", ">=", startOfToday)
-        );
-        const todaySnap = await getCountFromServer(qCompletedToday);
-        setCompletedTodayCount(todaySnap.data().count);
       } catch (error) {
         console.error("Error fetching stats:", error);
       }
     };
     fetchStats();
 
-    // 2. Pending assigned to this collector
-    const qPendingAssigned = query(
+    // Real-time listeners for today's progress
+
+    // 1. Completed Today (Pickups)
+    const qCompletedToday = query(
       collection(db, "pickupRequests"),
-      where("status", "==", "pending"),
-      where("collectorId", "==", user.uid)
+      where("status", "==", "completed"),
+      where("collectorId", "==", user.uid),
+      where("updatedAt", ">=", startOfToday)
     );
-
-    const unsubscribePendingAssigned = onSnapshot(qPendingAssigned, (snapshot) => {
-      setStats(prev => ({ ...prev, pending: snapshot.size }));
+    const unsubscribeCompletedToday = onSnapshot(qCompletedToday, (snapshot) => {
+        const count = snapshot.size;
+        setCompletedTodayCount(prev => {
+            // This is a bit tricky since we want to combine both.
+            // We'll use a better approach by having separate states.
+            return count; // Temporary, will refine
+        });
     });
-
-    // 3. ALL Pending tasks (for progress calculation)
-    const qAllPending = query(
-      collection(db, "pickupRequests"),
-      where("status", "==", "pending")
-    );
-
-    const unsubscribeAllPending = onSnapshot(qAllPending, (snapshot) => {
-      setAllPendingCount(snapshot.size);
-    });
+    // Actually, let's use separate states for clarity
 
     return () => {
-      unsubscribePendingAssigned();
-      unsubscribeAllPending();
+        unsubscribeCompletedToday();
     };
   }, [user]);
 
+  // Refined real-time listeners for progress
+  const [completedPickupsToday, setCompletedPickupsToday] = useState(0);
+  const [completedSchedulesToday, setCompletedSchedulesToday] = useState(0);
+  const [pendingPickupsTotal, setPendingPickupsTotal] = useState(0);
+  const [pendingSchedulesTotal, setPendingSchedulesTotal] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const unsub1 = onSnapshot(query(
+      collection(db, "pickupRequests"),
+      where("status", "==", "completed"),
+      where("collectorId", "==", user.uid),
+      where("updatedAt", ">=", startOfToday)
+    ), s => setCompletedPickupsToday(s.size));
+
+    const unsub2 = onSnapshot(query(
+      collection(db, "schedules"),
+      where("status", "==", "completed"),
+      where("collectorId", "==", user.uid),
+      where("updatedAt", ">=", startOfToday)
+    ), s => setCompletedSchedulesToday(s.size));
+
+    const unsub3 = onSnapshot(query(
+      collection(db, "pickupRequests"),
+      where("status", "==", "pending")
+    ), s => setPendingPickupsTotal(s.size));
+
+    const unsub4 = onSnapshot(query(
+      collection(db, "schedules"),
+      where("collectorId", "==", user.uid),
+      where("status", "in", ["pending", "started"])
+    ), s => setPendingSchedulesTotal(s.size));
+
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
+  }, [user]);
+
   const progress = useMemo(() => {
-    const total = completedTodayCount + allPendingCount;
-    return total > 0 ? Math.round((completedTodayCount / total) * 100) : 0;
-  }, [completedTodayCount, allPendingCount]);
+    const completed = completedPickupsToday + completedSchedulesToday;
+    const pending = pendingPickupsTotal + pendingSchedulesTotal;
+    const total = completed + pending;
+    return total > 0 ? Math.round((completed / total) * 100) : 0;
+  }, [completedPickupsToday, completedSchedulesToday, pendingPickupsTotal, pendingSchedulesTotal]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(query(
+        collection(db, "pickupRequests"),
+        where("status", "==", "pending"),
+        where("collectorId", "==", user.uid)
+      ), s => setStats(prev => ({ ...prev, pending: s.size })));
+    return unsub;
+  }, [user]);
 
   return (
     <RoleGuard allowedRole="collector">
@@ -119,8 +171,9 @@ export default function CollectorDashboard() {
       <aside className={styles.sidebar}>
         <div className={styles.logo}>EcoCycle</div>
         <nav className={styles.nav}>
-          <nav className="flex flex-col gap-2"><Link href="/collector/notification" className="flex items-center gap-3 px-4 py-2 text-sm font-medium bg-[#55B56F] text-white rounded-[12px] shadow-lg shadow-[#55B56F]/20">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          <nav className="flex flex-col gap-2">
+          <Link href="/collector" className="flex items-center gap-3 px-4 py-2 text-sm font-medium bg-[#55B56F] text-white rounded-[12px] shadow-lg shadow-[#55B56F]/20">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
             Dashboard
           </Link>
           <Link href="/collector/tasks" className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-white rounded-lg transition-colors">
@@ -128,7 +181,7 @@ export default function CollectorDashboard() {
             Tasks
           </Link>
           <Link href="/collector/notification" className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-white rounded-lg transition-colors">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
             Notifications
           </Link>
           <Link href="/collector/profile" className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-white rounded-lg transition-colors">

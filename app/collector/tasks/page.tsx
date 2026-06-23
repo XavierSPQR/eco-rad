@@ -20,17 +20,20 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 import { useLiveTracking } from "@/lib/useLiveTracking";
 import { RoleGuard } from "@/components/RoleGuard";
+import { notifyAllAdmins } from "@/lib/adminNotifications";
 
 type PickupRequest = {
   id: string;
-  userId: string;
+  userId?: string;
   description: string;
   location: string;
-  status: "pending" | "scheduled" | "completed" | "cancelled";
-  requestedDate: Timestamp | null;
+  status: "pending" | "scheduled" | "completed" | "cancelled" | "started";
+  requestedDate?: Timestamp | null;
+  date?: string;
   createdAt: Timestamp | null;
   collectorId?: string;
   updatedAt?: Timestamp | null;
+  type: "pickup" | "schedule";
 };
 
 type WasteType = "Recyclable" | "Organic" | "E-Waste";
@@ -43,7 +46,8 @@ const POINTS_CONFIG: Record<WasteType, number> = {
 
 export default function CollectorTasksPage() {
   const { user, profile } = useAuth();
-  const [pendingTasks, setPendingTasks] = useState<PickupRequest[]>([]);
+  const [pendingPickups, setPendingPickups] = useState<PickupRequest[]>([]);
+  const [scheduledTasks, setScheduledTasks] = useState<PickupRequest[]>([]);
   const [completedTasksToday, setCompletedTasksToday] = useState<PickupRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,16 +57,19 @@ export default function CollectorTasksPage() {
   // Start live tracking
   useLiveTracking(user, profile);
 
-  // Confirmation Modal State
+  // Confirmation Modal State for Pickups
   const [selectedTask, setSelectedTask] = useState<PickupRequest | null>(null);
   const [wasteType, setWasteType] = useState<WasteType>("Organic");
   const [weight, setWeight] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Confirmation Modal State for Schedules
+  const [scheduleToComplete, setScheduleToComplete] = useState<PickupRequest | null>(null);
+
   useEffect(() => {
     if (!user) return;
 
-    // Listen to pending tasks
+    // Listen to pending pickup requests
     const qPending = query(
       collection(db, "pickupRequests"),
       where("status", "==", "pending"),
@@ -72,42 +79,85 @@ export default function CollectorTasksPage() {
     const unsubscribePending = onSnapshot(qPending, (snapshot) => {
       const taskList = snapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        type: "pickup"
       })) as PickupRequest[];
-      setPendingTasks(taskList);
+      setPendingPickups(taskList);
       setLoading(false);
     }, (error) => {
       console.error("Error fetching pending tasks:", error);
       setLoading(false);
     });
 
-    // Listen to completed tasks by this collector
-    // We filter "today" in memory to avoid needing a complex composite index for now,
-    // or we can use a simpler query.
-    const qCompleted = query(
+    // Listen to schedules assigned to this collector
+    const qSchedules = query(
+      collection(db, "schedules"),
+      where("collectorId", "==", user.uid),
+      where("status", "in", ["pending", "started"])
+    );
+
+    const unsubscribeSchedules = onSnapshot(qSchedules, (snapshot) => {
+      const scheduleList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        type: "schedule",
+        location: doc.data().region,
+        requestedDate: doc.data().date ? Timestamp.fromDate(new Date(doc.data().date)) : null
+      })) as PickupRequest[];
+      setScheduledTasks(scheduleList);
+    });
+
+    // Listen to completed tasks (both types) by this collector
+    const qCompletedPickups = query(
       collection(db, "pickupRequests"),
       where("status", "==", "completed"),
       where("collectorId", "==", user.uid)
     );
 
-    const unsubscribeCompleted = onSnapshot(qCompleted, (snapshot) => {
-      const startOfToday = new Date();
-      startOfToday.setHours(0, 0, 0, 0);
+    const qCompletedSchedules = query(
+      collection(db, "schedules"),
+      where("status", "==", "completed"),
+      where("collectorId", "==", user.uid)
+    );
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const unsubscribeCompletedPickups = onSnapshot(qCompletedPickups, (snapshot) => {
       const taskList = snapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        type: "pickup"
       })) as PickupRequest[];
 
-      // Filter for today's completed tasks
       const todayList = taskList.filter(task => {
         const updateDate = task.updatedAt?.toDate();
         return updateDate && updateDate >= startOfToday;
       });
 
-      setCompletedTasksToday(todayList);
-    }, (error) => {
-      console.error("Error fetching completed tasks:", error);
+      setCompletedTasksToday(prev => {
+        const otherType = prev.filter(t => t.type !== "pickup");
+        return [...otherType, ...todayList];
+      });
+    });
+
+    const unsubscribeCompletedSchedules = onSnapshot(qCompletedSchedules, (snapshot) => {
+      const taskList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        type: "schedule",
+        location: doc.data().region
+      })) as PickupRequest[];
+
+      const todayList = taskList.filter(task => {
+        const updateDate = task.updatedAt?.toDate();
+        return updateDate && updateDate >= startOfToday;
+      });
+
+      setCompletedTasksToday(prev => {
+        const otherType = prev.filter(t => t.type !== "schedule");
+        return [...otherType, ...todayList];
+      });
     });
 
     // Fetch Truck ID and Area from activeVehicles
@@ -126,7 +176,9 @@ export default function CollectorTasksPage() {
 
     return () => {
       unsubscribePending();
-      unsubscribeCompleted();
+      unsubscribeSchedules();
+      unsubscribeCompletedPickups();
+      unsubscribeCompletedSchedules();
     };
   }, [user]);
 
@@ -160,7 +212,7 @@ export default function CollectorTasksPage() {
       });
 
       // 3. Update resident points and residences count
-      const userRef = doc(db, "users", selectedTask.userId);
+      const userRef = doc(db, "users", selectedTask.userId!);
       batch.update(userRef, {
         points: increment(pointsEarned),
         residences: increment(1),
@@ -179,15 +231,56 @@ export default function CollectorTasksPage() {
     }
   };
 
+  const handleStartSchedule = async (schedule: PickupRequest) => {
+    try {
+      await updateDoc(doc(db, "schedules", schedule.id), {
+        status: "started",
+        updatedAt: serverTimestamp()
+      });
+
+      const time = new Date().toLocaleTimeString();
+      await notifyAllAdmins(
+        "Pickup started",
+        `${profile?.fullName || "Collector"} Pickup Started ${time}`,
+        "truck"
+      );
+    } catch (error) {
+      console.error("Error starting schedule:", error);
+    }
+  };
+
+  const handleCompleteSchedule = async () => {
+    if (!scheduleToComplete) return;
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, "schedules", scheduleToComplete.id), {
+        status: "completed",
+        updatedAt: serverTimestamp()
+      });
+
+      const time = new Date().toLocaleTimeString();
+      await notifyAllAdmins(
+        "Pickup completed",
+        `${profile?.fullName || "Collector"} Pickup Completed ${time}`,
+        "verified"
+      );
+      setScheduleToComplete(null);
+    } catch (error) {
+      console.error("Error completing schedule:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const filteredTasks = useMemo(() => {
-    let combined = [...pendingTasks];
+    let combined = [...pendingPickups, ...scheduledTasks];
     if (filterStatus === "all" || filterStatus === "completed") {
       combined = [...combined, ...completedTasksToday];
     }
 
     // If filter is specific
     if (filterStatus === "pending") {
-      combined = [...pendingTasks];
+      combined = [...pendingPickups, ...scheduledTasks];
     } else if (filterStatus === "completed") {
       combined = [...completedTasksToday];
     }
@@ -198,18 +291,17 @@ export default function CollectorTasksPage() {
         task.description.toLowerCase().includes(searchTerm.toLowerCase())
       )
       .sort((a, b) => {
-        // Sort by date, pending first or just by date
         const dateA = a.requestedDate?.toDate() || new Date(0);
         const dateB = b.requestedDate?.toDate() || new Date(0);
         return dateA.getTime() - dateB.getTime();
       });
-  }, [pendingTasks, completedTasksToday, searchTerm, filterStatus]);
+  }, [pendingPickups, scheduledTasks, completedTasksToday, searchTerm, filterStatus]);
 
   const progress = useMemo(() => {
     const completedCount = completedTasksToday.length;
-    const total = completedCount + pendingTasks.length;
+    const total = completedCount + pendingPickups.length + scheduledTasks.length;
     return total > 0 ? Math.round((completedCount / total) * 100) : 0;
-  }, [completedTasksToday, pendingTasks]);
+  }, [completedTasksToday, pendingPickups, scheduledTasks]);
 
   const getInitials = (name: string) => {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
@@ -332,6 +424,7 @@ export default function CollectorTasksPage() {
                 <tr className="text-[12px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-4">
                   <th className="pb-4 font-bold">Location</th>
                   <th className="pb-4 font-bold">Description</th>
+                  <th className="pb-4 font-bold">Type</th>
                   <th className="pb-4 font-bold">Request Date</th>
                   <th className="pb-4 font-bold text-center">Status</th>
                   <th className="pb-4"></th>
@@ -340,11 +433,11 @@ export default function CollectorTasksPage() {
               <tbody className="divide-y divide-gray-50">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-gray-500">Loading tasks...</td>
+                    <td colSpan={6} className="py-10 text-center text-gray-500">Loading tasks...</td>
                   </tr>
                 ) : filteredTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-gray-500">No tasks found.</td>
+                    <td colSpan={6} className="py-10 text-center text-gray-500">No tasks found.</td>
                   </tr>
                 ) : filteredTasks.map((task) => (
                   <tr key={task.id} className="group">
@@ -353,6 +446,11 @@ export default function CollectorTasksPage() {
                       <span className="font-bold text-gray-800 text-[14px]">{task.location}</span>
                     </td>
                     <td className="py-5 font-bold text-gray-600 text-[14px] truncate max-w-[200px]">{task.description}</td>
+                    <td className="py-5 font-bold text-[12px] uppercase">
+                      <span className={task.type === "pickup" ? "text-blue-500" : "text-purple-500"}>
+                        {task.type}
+                      </span>
+                    </td>
                     <td className="py-5 font-bold text-gray-600 text-[14px]">
                       {task.requestedDate?.toDate().toLocaleDateString() || "N/A"}
                     </td>
@@ -360,18 +458,36 @@ export default function CollectorTasksPage() {
                       <span className={`text-[10px] font-bold px-4 py-1.5 rounded-full shadow-lg capitalize ${
                         task.status === 'pending'
                         ? 'bg-gradient-to-r from-[#F1883D] to-[#F37651] text-white shadow-orange-500/20'
+                        : task.status === 'started'
+                        ? 'bg-gradient-to-r from-[#3B82F6] to-[#2563EB] text-white shadow-blue-500/20'
                         : 'bg-gradient-to-r from-[#55B56F] to-[#2E7D32] text-white shadow-green-500/20'
                       }`}>
                         {task.status === 'completed' ? 'Confirmed' : task.status}
                       </span>
                     </td>
                     <td className="py-5 text-right">
-                      {task.status === 'pending' && (
+                      {task.type === 'pickup' && task.status === 'pending' && (
                         <button
                           onClick={() => setSelectedTask(task)}
                           className="bg-[#2E7D32] hover:bg-[#25632a] text-white text-[10px] font-bold px-5 py-1.5 rounded-full transition-colors"
                         >
                           Confirm
+                        </button>
+                      )}
+                      {task.type === 'schedule' && task.status === 'pending' && (
+                        <button
+                          onClick={() => handleStartSchedule(task)}
+                          className="bg-[#3B82F6] hover:bg-[#2563EB] text-white text-[10px] font-bold px-5 py-1.5 rounded-full transition-colors"
+                        >
+                          Start
+                        </button>
+                      )}
+                      {task.type === 'schedule' && task.status === 'started' && (
+                        <button
+                          onClick={() => setScheduleToComplete(task)}
+                          className="bg-[#55B56F] hover:bg-[#469d5d] text-white text-[10px] font-bold px-5 py-1.5 rounded-full transition-colors"
+                        >
+                          Complete
                         </button>
                       )}
                     </td>
@@ -380,7 +496,7 @@ export default function CollectorTasksPage() {
               </tbody>
             </table>
 
-            {/* Confirmation Modal */}
+            {/* Confirmation Modal for Pickups */}
             {selectedTask && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl">
@@ -436,6 +552,31 @@ export default function CollectorTasksPage() {
                       className="flex-1 bg-[#55B56F] hover:bg-[#469d5d] disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-[#55B56F]/20 transition-all"
                     >
                       {isSubmitting ? "Processing..." : "Complete Task"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Confirmation Modal for Schedules */}
+            {scheduleToComplete && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl">
+                  <h3 className="text-2xl font-bold text-gray-800 mb-6 text-center">Are you sure?</h3>
+
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setScheduleToComplete(null)}
+                      className="flex-1 px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
+                    >
+                      No
+                    </button>
+                    <button
+                      onClick={handleCompleteSchedule}
+                      disabled={isSubmitting}
+                      className="flex-1 bg-[#55B56F] hover:bg-[#469d5d] text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-[#55B56F]/20 transition-all"
+                    >
+                      {isSubmitting ? "..." : "Yes"}
                     </button>
                   </div>
                 </div>
