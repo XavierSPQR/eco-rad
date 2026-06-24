@@ -208,9 +208,9 @@ export default function CollectionHistoryPage() {
           <button type="button" className={styles.exportButton} onClick={handleExport}>
             Export
           </button>
-          <button type="button" className={styles.primaryButton} onClick={() => setModalOpen(true)}>
+          {/*<button type="button" className={styles.primaryButton} onClick={() => setModalOpen(true)}>
             + New request
-          </button>
+          </button>*/}
         </div>
       </div>
 
