@@ -19,6 +19,9 @@ export type UserProfile = {
   district: string;
   address: string;
   nic: string;
+  routeID?: string;
+  residentID?: string;
+  employeeID?: string;
   role: UserRole;
   points: number;
   residences: number;
@@ -50,6 +53,8 @@ export async function signUpResident(
       uid: user.uid,
       email,                    // always use the canonical email param
       role: "resident" as UserRole,
+      residentID: profile.residentID ?? "",
+      routeID: profile.routeID ?? "",
       points: 0,
       residences: 0,
       badgeLevel: "Green Contributor",

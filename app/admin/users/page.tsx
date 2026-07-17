@@ -7,6 +7,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
+import { extractPrefixedNumber, formatPrefixedNumber } from "@/lib/idFormat";
 import {
   collection,
   getDocs,
@@ -23,11 +24,12 @@ import {
 
 interface User {
   id: string;
+  residentID: string;
   name: string; // Mapped from fullName
   email: string;
   phone: string;
   address: string;
-  district: string;
+  routeID: string;
   nic: string;
   role: string;
   points: number;
@@ -62,12 +64,13 @@ export default function AdminUsersPage() {
   const pathname = usePathname();
   const [userList, setUserList] = useState<User[]>([]);
   const [formData, setFormData] = useState({
+    residentID: "",
     name: "",
     nic: "",
     email: "",
     phone: "",
     address: "",
-    district: "",
+    routeID: "",
     role: "resident",
     points: 0,
     residences: 0,
@@ -89,6 +92,7 @@ export default function AdminUsersPage() {
           return {
             id: doc.id,
             ...data,
+            residentID: data.residentID || "",
             name: data.fullName || "", // Map fullName from Firestore to name in UI
           };
         }) as User[];
@@ -109,11 +113,12 @@ export default function AdminUsersPage() {
     setEditingId(null);
     setFormData({
       name: "",
+      residentID: "",
       nic: "",
       email: "",
       phone: "",
       address: "",
-      district: "",
+      routeID: "",
       role: "resident",
       points: 0,
       residences: 0,
@@ -125,11 +130,12 @@ export default function AdminUsersPage() {
     setEditingId(user.id);
     setFormData({
       name: user.name || "",
+      residentID: user.residentID || "",
       nic: user.nic || "",
       email: user.email || "",
       phone: user.phone || "",
       address: user.address || "",
-      district: user.district || "",
+      routeID: user.routeID || "",
       role: user.role || "resident",
       points: user.points || 0,
       residences: user.residences || 0,
@@ -143,8 +149,13 @@ export default function AdminUsersPage() {
     try {
       // Map name back to fullName for Firestore
       const { name, ...otherData } = formData;
+      const existingIds = userList
+        .map((user) => extractPrefixedNumber(user.residentID, "R"))
+        .filter((value): value is number => typeof value === "number");
+      const nextResidentID = formData.residentID.trim() || formatPrefixedNumber("R", (existingIds.length ? Math.max(...existingIds) : 0) + 1);
       const firestoreData = {
         ...otherData,
+        residentID: nextResidentID,
         fullName: name,
         role: "resident", // Ensure role is always resident
         points: Number(formData.points),
@@ -158,7 +169,7 @@ export default function AdminUsersPage() {
         setUserList((prev) =>
           prev.map((u) =>
             u.id === editingId
-              ? { ...u, name: name, ...otherData, points: Number(formData.points), residences: Number(formData.residences) }
+              ? { ...u, residentID: nextResidentID, name: name, ...otherData, points: Number(formData.points), residences: Number(formData.residences) }
               : u
           )
         );
@@ -170,7 +181,7 @@ export default function AdminUsersPage() {
           createdAt: serverTimestamp(),
         };
         const docRef = await addDoc(collection(db, "users"), newUser);
-        setUserList((prev) => [{ id: docRef.id, name: name, ...otherData, points: Number(formData.points), residences: Number(formData.residences) } as User, ...prev]);
+        setUserList((prev) => [{ id: docRef.id, residentID: nextResidentID, name: name, ...otherData, points: Number(formData.points), residences: Number(formData.residences) } as User, ...prev]);
       }
       setIsFormOpen(false);
       setError(null);
@@ -378,6 +389,15 @@ export default function AdminUsersPage() {
               </div>
               {/* Sri Lankan NIC structure: Old = 9 digits + V/X, New = 12 digits */}
               <div className="form-row">
+                <label>Resident ID</label>
+                <input
+                  type="text"
+                  value={formData.residentID}
+                  onChange={(e) => setFormData({ ...formData, residentID: e.target.value })}
+                  placeholder="Auto-generates as R001"
+                />
+              </div>
+              <div className="form-row">
                 <label>NIC</label>
                 <input
                   type="text"
@@ -418,12 +438,12 @@ export default function AdminUsersPage() {
                 />
               </div>
               <div className="form-row">
-                <label>District</label>
+                <label>routeID</label>
                 <input
                   type="text"
-                  value={formData.district}
-                  onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                  placeholder="Enter district"
+                  value={formData.routeID}
+                  onChange={(e) => setFormData({ ...formData, routeID: e.target.value })}
+                  placeholder="Enter route ID"
                 />
               </div>
               <div className="form-row">
@@ -453,11 +473,12 @@ export default function AdminUsersPage() {
 
           <div className="users-table">
             <div className="users-row users-row--header">
+              <span>RID</span>
               <span>FULL NAME</span>
               <span>NIC</span>
               <span>EMAIL</span>
               <span>PHONE</span>
-              <span>DISTRICT</span>
+              <span>ROUTE ID</span>
               <span>RESIDENCES</span>
               <span>POINTS</span>
               <span>ACTION</span>
@@ -470,16 +491,17 @@ export default function AdminUsersPage() {
             ) : (
               userList.map((user) => (
                 <div className="users-row" key={user.id}>
-                  <span>
+                  <span className="users-cell users-cell--strong">{user.residentID}</span>
+                  <span className="users-cell">
                     <strong>{user.name}</strong>
                     <small style={{ fontSize: '0.7rem', color: '#6b7280' }}>{user.address}</small>
                   </span>
-                  <span>{user.nic}</span>
-                  <span>{user.email}</span>
-                  <span>{user.phone}</span>
-                  <span>{user.district}</span>
-                  <span>{(user.residences || 0).toLocaleString()}</span>
-                  <span>{(user.points || 0).toLocaleString()}</span>
+                  <span className="users-cell">{user.nic}</span>
+                  <span className="users-cell">{user.email}</span>
+                  <span className="users-cell">{user.phone}</span>
+                  <span className="users-cell">{user.routeID}</span>
+                  <span className="users-cell">{(user.residences || 0).toLocaleString()}</span>
+                  <span className="users-cell">{(user.points || 0).toLocaleString()}</span>
                   <span className="action-buttons">
                     <button className="action-button" onClick={() => handleEditClick(user)}>Edit</button>
                     <button className="action-button action-button--danger" onClick={() => handleDeleteUser(user)}>Delete</button>
@@ -791,10 +813,11 @@ export default function AdminUsersPage() {
 
         .users-row {
           display: grid;
-          grid-template-columns: 1.5fr 1fr 1.5fr 1.2fr 1fr 1fr 1fr 0.8fr;
+          grid-template-columns: 0.8fr 1.8fr 1fr 1.5fr 1.1fr 1fr 0.9fr 0.9fr 1fr;
           gap: 12px;
           align-items: center;
-          padding: 18px 16px;
+          min-width: 100%;
+          padding: 18px 18px;
           border-radius: 18px;
           background: #f8fbf7;
           color: #1d3a25;
@@ -805,6 +828,24 @@ export default function AdminUsersPage() {
           font-size: 0.85rem;
           font-weight: 700;
           color: #4d6b53;
+        }
+
+        .users-cell {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          overflow: hidden;
+        }
+
+        .users-cell small {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .users-cell--strong {
+          font-weight: 700;
         }
 
         .users-row strong,

@@ -8,37 +8,46 @@ import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 
 export default function ProfilePage() {
   const { user, profile: authProfile, loading } = useAuth();
+
   const [profile, setProfile] = useState({
     fullName: "",
     email: "",
     phone: "",
-    district: "",
     address: "",
     nic: "",
+    residentID: "",
+    routeID: "",
+    residences: "",
   });
+
   const [credentials, setCredentials] = useState({
     username: "",
     currentPassword: "",
     newPassword: "",
   });
+
   const [saved, setSaved] = useState(false);
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
-    if (authProfile) {
-      setProfile({
-        fullName: authProfile.fullName || "",
-        email: authProfile.email || "",
-        phone: authProfile.phone || "",
-        district: authProfile.district || "",
-        address: authProfile.address || "",
-        nic: authProfile.nic || "",
-      });
-      setCredentials((prev) => ({
-        ...prev,
-        username: authProfile.email?.split("@")[0] || "",
-      }));
-    }
+    if (!authProfile) return;
+
+    // Keep local form state in sync with the authenticated profile.
+    setProfile({
+      fullName: authProfile.fullName || "",
+      email: authProfile.email || "",
+      phone: authProfile.phone || "",
+      address: authProfile.address || "",
+      nic: authProfile.nic || "",
+      residentID: authProfile.residentID || "",
+      routeID: authProfile.routeID || "",
+      residences: String(authProfile.residences ?? ""),
+    });
+
+    setCredentials((prev) => ({
+      ...prev,
+      username: authProfile.email?.split("@")[0] || "",
+    }));
   }, [authProfile]);
 
   const handleChange = (field: keyof typeof profile, value: string) => {
@@ -46,7 +55,11 @@ export default function ProfilePage() {
     setSaved(false);
   };
 
-  const handleCredentialChange = (field: keyof typeof credentials, value: string) => {
+
+  const handleCredentialChange = (
+    field: keyof typeof credentials,
+    value: string
+  ) => {
     setCredentials((prev) => ({ ...prev, [field]: value }));
     setSaved(false);
   };
@@ -57,33 +70,44 @@ export default function ProfilePage() {
         fullName: authProfile.fullName || "",
         email: authProfile.email || "",
         phone: authProfile.phone || "",
-        district: authProfile.district || "",
         address: authProfile.address || "",
         nic: authProfile.nic || "",
+        residentID: authProfile.residentID || "",
+        routeID: authProfile.routeID || "",
+        residences: String(authProfile.residences ?? ""),
       });
     }
+
     setCredentials({
       username: authProfile?.email?.split("@")[0] || "",
       currentPassword: "",
       newPassword: "",
     });
+
     setSaved(false);
   };
 
   const handleSave = async () => {
     if (!user) return;
+
     setUpdating(true);
     try {
       const userRef = doc(db, "users", user.uid);
+
+      // Residents cannot edit `residentID`.
       await updateDoc(userRef, {
         fullName: profile.fullName,
         email: profile.email,
         phone: profile.phone,
-        district: profile.district,
         address: profile.address,
         nic: profile.nic,
+        // Ensure residentID cannot be changed from the client.
+        residentID: authProfile?.residentID ?? profile.residentID,
+        routeID: profile.routeID,
+        residences: Number(profile.residences || 0),
         updatedAt: serverTimestamp(),
       });
+
       setSaved(true);
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -93,11 +117,19 @@ export default function ProfilePage() {
   };
 
   if (loading) {
-    return <div className={styles.root}><p>Loading profile...</p></div>;
+    return (
+      <div className={styles.root}>
+        <p>Loading profile...</p>
+      </div>
+    );
   }
 
   if (!user) {
-    return <div className={styles.root}><p>Please sign in to view your profile.</p></div>;
+    return (
+      <div className={styles.root}>
+        <p>Please sign in to view your profile.</p>
+      </div>
+    );
   }
 
   return (
@@ -105,7 +137,9 @@ export default function ProfilePage() {
       <header className={styles.header}>
         <div>
           <p className={styles.overline}>Settings</p>
-          <h1 className={styles.title}>Manage your account, preferences and privacy.</h1>
+          <h1 className={styles.title}>
+            Manage your account, preferences and privacy.
+          </h1>
         </div>
       </header>
 
@@ -122,7 +156,9 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   value={profile.fullName}
-                  onChange={(event) => handleChange("fullName", event.target.value)}
+                  onChange={(event) =>
+                    handleChange("fullName", event.target.value)
+                  }
                 />
               </label>
 
@@ -131,7 +167,9 @@ export default function ProfilePage() {
                 <input
                   type="email"
                   value={profile.email}
-                  onChange={(event) => handleChange("email", event.target.value)}
+                  onChange={(event) =>
+                    handleChange("email", event.target.value)
+                  }
                 />
               </label>
 
@@ -140,16 +178,9 @@ export default function ProfilePage() {
                 <input
                   type="tel"
                   value={profile.phone}
-                  onChange={(event) => handleChange("phone", event.target.value)}
-                />
-              </label>
-
-              <label className={styles.field}>
-                <span>District</span>
-                <input
-                  type="text"
-                  value={profile.district}
-                  onChange={(event) => handleChange("district", event.target.value)}
+                  onChange={(event) =>
+                    handleChange("phone", event.target.value)
+                  }
                 />
               </label>
 
@@ -158,8 +189,48 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   value={profile.nic}
-                  onChange={(event) => handleChange("nic", event.target.value)}
+                  onChange={(event) =>
+                    handleChange("nic", event.target.value)
+                  }
                   placeholder="e.g. 199012345678"
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>Resident ID</span>
+                <input
+                  type="text"
+                  value={profile.residentID}
+                  readOnly
+                  aria-readonly="true"
+                  placeholder="R001"
+                />
+                <small className={styles.panelNote}>
+                  Resident ID is managed by the admin and cannot be edited.
+                </small>
+              </label>
+
+
+              <label className={styles.field}>
+                <span>Route ID</span>
+                <input
+                  type="text"
+                  value={profile.routeID}
+                  onChange={(event) =>
+                    handleChange("routeID", event.target.value)
+                  }
+                  placeholder="RT001"
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>Residences</span>
+                <input
+                  type="number"
+                  value={profile.residences}
+                  onChange={(event) =>
+                    handleChange("residences", event.target.value)
+                  }
                 />
               </label>
 
@@ -168,7 +239,9 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   value={profile.address}
-                  onChange={(event) => handleChange("address", event.target.value)}
+                  onChange={(event) =>
+                    handleChange("address", event.target.value)
+                  }
                 />
               </label>
             </div>
@@ -183,7 +256,9 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   value={credentials.username}
-                  onChange={(event) => handleCredentialChange("username", event.target.value)}
+                  onChange={(event) =>
+                    handleCredentialChange("username", event.target.value)
+                  }
                 />
               </label>
 
@@ -192,7 +267,12 @@ export default function ProfilePage() {
                 <input
                   type="password"
                   value={credentials.currentPassword}
-                  onChange={(event) => handleCredentialChange("currentPassword", event.target.value)}
+                  onChange={(event) =>
+                    handleCredentialChange(
+                      "currentPassword",
+                      event.target.value
+                    )
+                  }
                   placeholder="••••••••"
                 />
               </label>
@@ -202,27 +282,46 @@ export default function ProfilePage() {
                 <input
                   type="password"
                   value={credentials.newPassword}
-                  onChange={(event) => handleCredentialChange("newPassword", event.target.value)}
+                  onChange={(event) =>
+                    handleCredentialChange("newPassword", event.target.value)
+                  }
                   placeholder="••••••••"
                 />
               </label>
 
-              <p className={styles.panelNote}>Leave password blank to keep your current password.</p>
+              <p className={styles.panelNote}>
+                Leave password blank to keep your current password.
+              </p>
             </div>
           </aside>
         </div>
 
         <div className={styles.buttonRow}>
-          <button type="button" className={styles.cancelButton} onClick={handleCancel} disabled={updating}>
+          <button
+            type="button"
+            className={styles.cancelButton}
+            onClick={handleCancel}
+            disabled={updating}
+          >
             Cancel
           </button>
-          <button type="button" className={styles.saveButton} onClick={handleSave} disabled={updating}>
+          <button
+            type="button"
+            className={styles.saveButton}
+            onClick={handleSave}
+            disabled={updating}
+          >
             {updating ? "Saving..." : "Save changes"}
           </button>
         </div>
 
-        {saved && <div className={styles.savedMessage}>Your profile changes have been saved.</div>}
+        {saved && (
+          <div className={styles.savedMessage}>
+            Your profile changes have been saved.
+          </div>
+        )}
       </div>
     </div>
   );
 }
+

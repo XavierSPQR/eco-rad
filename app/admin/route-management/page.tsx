@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { RoleGuard } from "@/components/RoleGuard";
 import { usePathname } from "next/navigation";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { db } from "@/lib/firebase";
+import { collection, addDoc, getDocs, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { extractPrefixedNumber, formatPrefixedNumber } from "@/lib/idFormat";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -48,12 +51,12 @@ const createEmptyForm = (): RouteFormState => ({
 
 const initialRoutes: RouteRow[] = [
   {
-    id: "R-001",
+    id: "RT001",
     region: "Colombo",
     points: ["Kotte", "Bambalapitiya", "Wellawatte"],
   },
   {
-    id: "R-002",
+    id: "RT002",
     region: "Gampaha",
     points: ["Ja-Ela", "Negombo"],
   },
@@ -67,6 +70,25 @@ export default function AdminRouteManagementPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
   const [formData, setFormData] = useState<RouteFormState>(createEmptyForm());
+
+  useEffect(() => {
+    const loadRoutes = async () => {
+      const snap = await getDocs(collection(db, "routes"));
+      if (snap.empty) return;
+      setRoutes(
+        snap.docs.map((routeDoc) => {
+          const data = routeDoc.data();
+          return {
+            id: data.routeId || routeDoc.id,
+            region: data.region || "",
+            points: data.points || [],
+          };
+        })
+      );
+    };
+
+    void loadRoutes();
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -124,7 +146,7 @@ export default function AdminRouteManagementPage() {
     }));
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const routeId = formData.routeId.trim();
@@ -135,14 +157,22 @@ export default function AdminRouteManagementPage() {
       return;
     }
 
-    const nextRoute: RouteRow = { id: routeId, region, points };
+    const existingIds = routes.map((route) => extractPrefixedNumber(route.id, "RT")).filter((value): value is number => typeof value === "number");
+    const generatedId = formatPrefixedNumber("RT", (existingIds.length ? Math.max(...existingIds) : 0) + 1);
+    const finalRouteId = routeId || generatedId;
+    const nextRoute: RouteRow = { id: finalRouteId, region, points };
+    const routeRecord = { routeId: finalRouteId, region, points, updatedAt: serverTimestamp() };
 
     if (editingRouteId) {
-      setRoutes((current) =>
-        current.map((route) => (route.id === editingRouteId ? nextRoute : route))
-      );
+      setRoutes((current) => current.map((route) => (route.id === editingRouteId ? nextRoute : route)));
+      const existingDocs = await getDocs(collection(db, "routes"));
+      const existingDoc = existingDocs.docs.find((d) => (d.data().routeId || d.id) === editingRouteId);
+      if (existingDoc) {
+        await updateDoc(doc(db, "routes", existingDoc.id), routeRecord);
+      }
     } else {
       setRoutes((current) => [nextRoute, ...current]);
+      await addDoc(collection(db, "routes"), { ...routeRecord, routeId: finalRouteId, createdAt: serverTimestamp() });
     }
 
     closeModal();
@@ -886,4 +916,3 @@ export default function AdminRouteManagementPage() {
     </RoleGuard>
   );
 }
-

@@ -8,24 +8,24 @@ import { db } from "@/lib/firebase";
 import {
   collection,
   getDocs,
-  addDoc,
-  updateDoc,
+  setDoc,
   doc,
   serverTimestamp,
   Timestamp,
   query,
   where,
 } from "firebase/firestore";
+import { extractPrefixedNumber, formatPrefixedNumber } from "@/lib/idFormat";
 
 interface Employee {
   id: string;
+  employeeID: string;
   name: string; // Mapped from fullName
-  nic: string;
-  email: string;
   role: string;
   contact: string; // Mapped from phone
   createdAt?: Timestamp;
 }
+
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -56,26 +56,25 @@ export default function AdminEmployeePage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
+    employeeID: "",
     name: "",
-    nic: "",
-    email: "",
     role: "collector",
     contact: ""
   });
+
 
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
         setLoading(true);
-        const q = query(collection(db, "users"), where("role", "in", ["admin", "collector"]));
+        const q = query(collection(db, "users"), where("role", "in", ["admin", "collector", "driver"]));
         const querySnapshot = await getDocs(q);
         const employeesData = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           return {
             id: doc.id,
+            employeeID: data.employeeID || "",
             name: data.fullName || "",
-            nic: data.nic || "",
-            email: data.email || "",
             role: data.role || "",
             contact: data.phone || "",
             createdAt: data.createdAt,
@@ -96,16 +95,15 @@ export default function AdminEmployeePage() {
 
   const handleAddClick = () => {
     setEditingId(null);
-    setFormData({ name: "", nic: "", email: "", role: "collector", contact: "" });
+    setFormData({ employeeID: "", name: "", role: "collector", contact: "" });
     setIsFormOpen(true);
   };
 
   const handleEditClick = (employee: Employee) => {
     setEditingId(employee.id);
     setFormData({
+      employeeID: employee.employeeID,
       name: employee.name,
-      nic: employee.nic,
-      email: employee.email,
       role: employee.role,
       contact: employee.contact,
     });
@@ -114,37 +112,37 @@ export default function AdminEmployeePage() {
 
   const handleSaveEmployee = async () => {
     if (!formData.name.trim()) return;
-    // NIC pattern validation
-    if (formData.nic.trim().length > 0 && !/^(\d{9}[VvXx]|\d{12})$/.test(formData.nic.trim())) {
-        setError("Invalid NIC format.");
-        return;
-    }
+
 
     try {
+      const existingIds = employeeRows
+        .map((employee) => extractPrefixedNumber(employee.employeeID, "E"))
+        .filter((value): value is number => typeof value === "number");
+      const nextEmployeeID = formData.employeeID.trim() || formatPrefixedNumber("E", (existingIds.length ? Math.max(...existingIds) : 0) + 1);
       const firestoreData = {
-        fullName: formData.name,
-        nic: formData.nic,
-        email: formData.email,
-        role: formData.role,
-        phone: formData.contact,
+        employeeID: nextEmployeeID,
+        fullName: formData.name ?? "",
+        nic: formData.nic ?? "",
+        role: formData.role ?? "collector",
+        phone: formData.contact ?? "",
         updatedAt: serverTimestamp(),
       };
 
       if (editingId) {
         const docRef = doc(db, "users", editingId);
-        await updateDoc(docRef, firestoreData);
+        await setDoc(docRef, firestoreData, { merge: true });
         setEmployeeRows((prev) =>
           prev.map((emp) =>
-            emp.id === editingId ? { ...emp, ...formData } : emp
+            emp.id === editingId ? { ...emp, ...formData, employeeID: nextEmployeeID } : emp
           )
         );
       } else {
-        const newEmployee = {
+        const docRef = doc(collection(db, "users"));
+        await setDoc(docRef, {
           ...firestoreData,
           createdAt: serverTimestamp(),
-        };
-        const docRef = await addDoc(collection(db, "users"), newEmployee);
-        setEmployeeRows((prev) => [{ id: docRef.id, ...formData } as Employee, ...prev]);
+        });
+        setEmployeeRows((prev) => [{ id: docRef.id, ...formData, employeeID: nextEmployeeID } as Employee, ...prev]);
       }
       setIsFormOpen(false);
       setError(null);
@@ -297,24 +295,12 @@ export default function AdminEmployeePage() {
                 </div>
 
                 <div className="form-row">
-                  <label>NIC</label>
+                  <label>Employee ID</label>
                   <input
                     type="text"
-                    value={formData.nic}
-                    onChange={(e) => setFormData({ ...formData, nic: e.target.value.toUpperCase() })}
-                    placeholder="e.g. 900000000V or 123456789012"
-                    pattern="^(\d{9}[VvXx]|\d{12})$"
-                    title="Use Sri Lanka NIC: 9 digits + V/X (old) OR 12 digits (new)"
-                  />
-                </div>
-
-                <div className="form-row">
-                  <label>Email</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="user@ecocycle.lk"
+                    value={formData.employeeID}
+                    onChange={(e) => setFormData({ ...formData, employeeID: e.target.value })}
+                    placeholder="Auto-generates as E001"
                   />
                 </div>
 
@@ -324,8 +310,9 @@ export default function AdminEmployeePage() {
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   >
-                    <option value="collector">Collector</option>
                     <option value="admin">Admin</option>
+                    <option value="collector">Collector</option>
+                    <option value="driver">Driver</option>
                   </select>
                 </div>
                 <div className="form-row">
@@ -339,16 +326,17 @@ export default function AdminEmployeePage() {
                 </div>
 
                 <div className="form-actions">
-                  <button className="action-button" onClick={handleSaveEmployee}>{editingId !== null ? "Save Changes" : "Add Employee"}</button>
-                  <button className="action-button action-button--secondary" onClick={handleCancel}>Cancel</button>
+                  <button type="button" className="action-button" onClick={handleSaveEmployee}>{editingId !== null ? "Save Changes" : "Add Employee"}</button>
+                  <button type="button" className="action-button action-button--secondary" onClick={handleCancel}>Cancel</button>
                 </div>
               </div>
             )}
 
             <div className="employee-table">
               <div className="employee-row employee-row--header">
+                <span>EID</span>
                 <span>NAME</span>
-                <span>NIC</span>
+
                 <span>ROLE</span>
                 <span>CONTACT</span>
                 <span>ACTION</span>
@@ -364,10 +352,13 @@ export default function AdminEmployeePage() {
               ) : (
                 employeeRows.map((employee) => (
                   <div className="employee-row" key={employee.id}>
-                    <span>{employee.name}</span>
-                    <span>{employee.nic}</span>
-                    <span style={{ textTransform: 'capitalize' }}>{employee.role}</span>
-                    <span>{employee.contact}</span>
+                    <span className="employee-cell employee-cell--strong">{employee.employeeID}</span>
+                    <span className="employee-cell">
+                      <strong>{employee.name}</strong>
+                    </span>
+
+                    <span className="employee-cell" style={{ textTransform: 'capitalize' }}>{employee.role}</span>
+                    <span className="employee-cell">{employee.contact}</span>
                     <span className="action-buttons">
                       <button className="action-button" onClick={() => handleEditClick(employee)}>Edit</button>
                     </span>
@@ -604,11 +595,11 @@ export default function AdminEmployeePage() {
 
           .employee-row {
             display: grid;
-            grid-template-columns: 1.6fr 1.1fr 1fr 1.25fr 0.75fr;
-            gap: 16px;
+            grid-template-columns: 0.8fr 1.8fr 1fr 1.15fr 0.8fr;
+            gap: 12px;
             align-items: center;
-            min-width: 740px;
-            padding: 16px;
+            min-width: 100%;
+            padding: 16px 18px;
             border-radius: 18px;
             background: #f8fbf7;
             color: #1d3a25;
@@ -619,6 +610,26 @@ export default function AdminEmployeePage() {
             font-size: 0.78rem;
             font-weight: 800;
             color: #4d6b53;
+          }
+
+          .employee-cell {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            overflow: hidden;
+          }
+
+          .employee-cell small {
+            color: #6b7280;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          .employee-cell--strong {
+            font-weight: 700;
           }
 
           .action-buttons {
