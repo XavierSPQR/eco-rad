@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   collection,
   query,
-  where,
   onSnapshot,
   addDoc,
   serverTimestamp,
@@ -13,18 +12,21 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
+import { normalizeWasteType, WASTE_TYPE_OPTIONS, type WasteType } from "@/lib/wasteTypes";
 import styles from "./page.module.css";
-
-type WasteType = "Recyclable" | "Organic" | "E-Waste";
 
 type WasteCollection = {
   id: string;
-  userId: string;
+  userId?: string;
+  residentId?: string;
+  residentID?: string;
+  residentName?: string;
   wasteType: WasteType;
   weight: number;
   pointsEarned: number;
-  collectedAt: Timestamp | null;
-  collectorId: string;
+  collectedAt?: Timestamp | null;
+  collectionDate?: Timestamp | string | null;
+  collectorId?: string;
 };
 
 type PickupRequest = {
@@ -47,7 +49,17 @@ type HistoryItem = {
   isPending: boolean;
 };
 
-const WASTE_TYPES = ["Recyclable", "Organic", "E-Waste"] as const;
+const WASTE_TYPES = [...WASTE_TYPE_OPTIONS] as const;
+
+const matchesCurrentUser = (data: Record<string, unknown>, uid: string) => {
+  const candidates = [
+    String(data.userId || data.user_id || "").trim(),
+    String(data.residentId || data.resident_id || "").trim(),
+    String(data.residentID || "").trim(),
+  ];
+
+  return candidates.some((candidate) => candidate && candidate === uid);
+};
 
 export default function CollectionHistoryPage() {
   const { user } = useAuth();
@@ -69,14 +81,19 @@ export default function CollectionHistoryPage() {
 
     const wasteQuery = query(
       collection(db, "wasteCollections"),
-      where("userId", "==", user.uid),
-      orderBy("collectedAt", "desc")
+      orderBy("collectionDate", "desc")
     );
 
     const unsubWaste = onSnapshot(wasteQuery, (snapshot) => {
-      setWasteCollections(
-        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as WasteCollection))
-      );
+      const mappedCollections = snapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          wasteType: normalizeWasteType(String(doc.data().wasteType ?? "")) as WasteType,
+        } as WasteCollection))
+        .filter((item) => matchesCurrentUser(item as Record<string, unknown>, user.uid));
+
+      setWasteCollections(mappedCollections);
     }, (error) => {
       console.error("Error fetching waste collections:", error);
       if (error.message.includes("index")) {
@@ -86,13 +103,14 @@ export default function CollectionHistoryPage() {
 
     const pickupQuery = query(
       collection(db, "pickupRequests"),
-      where("userId", "==", user.uid),
       orderBy("requestedDate", "desc")
     );
 
     const unsubPickup = onSnapshot(pickupQuery, (snapshot) => {
       setPickupRequests(
-        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as PickupRequest))
+        snapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() } as PickupRequest))
+          .filter((item) => item.userId === user.uid)
       );
     }, (error) => {
       console.error("Error fetching pickup requests:", error);
@@ -109,8 +127,9 @@ export default function CollectionHistoryPage() {
 
   const historyItems = useMemo(() => {
     const filteredWaste = wasteCollections.filter((item) => {
-      if (!item.collectedAt) return false;
-      const date = item.collectedAt.toDate();
+      const dateValue = item.collectionDate ?? item.collectedAt;
+      if (!dateValue) return false;
+      const date = dateValue instanceof Timestamp ? dateValue.toDate() : new Date(dateValue);
       const dateString = date.toISOString().split("T")[0];
 
       if (!selectedTypes.includes(item.wasteType)) return false;
@@ -118,7 +137,11 @@ export default function CollectionHistoryPage() {
       if (dateTo && dateString > dateTo) return false;
       return true;
     }).map((item): HistoryItem => {
-      const date = item.collectedAt?.toDate() || new Date();
+      const date = item.collectionDate instanceof Timestamp
+        ? item.collectionDate.toDate()
+        : item.collectionDate
+          ? new Date(item.collectionDate)
+          : item.collectedAt?.toDate() || new Date();
       return {
         id: item.id,
         date,

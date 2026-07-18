@@ -3,7 +3,23 @@
 import Link from "next/link";
 import { RoleGuard } from "@/components/RoleGuard";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query as firestoreQuery,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+  where,
+  writeBatch,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { calculatePointsEarned, migrateLegacyWasteTypes, normalizeWasteType, WASTE_TYPE_OPTIONS, type WasteType } from "@/lib/wasteTypes";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -29,8 +45,15 @@ const sidebarItems = [
 type ResidentCollectionRow = {
   id: string;
   residentName: string;
-  wasteType: string;
-  weight: string;
+  residentID: string;
+  residentId: string;
+  userId?: string;
+  wasteType: WasteType;
+  weight: number;
+  pointsEarned: number;
+  collectionDate: Timestamp | string | null;
+  createdAt?: Timestamp | null;
+  updatedAt?: Timestamp | null;
 };
 
 type ResidentCollectionFormState = {
@@ -38,46 +61,181 @@ type ResidentCollectionFormState = {
   id: string;
   wasteType: string;
   weight: string;
+  collectionDate: string;
+};
+
+type ResidentOption = {
+  uid: string;
+  residentID: string;
+  fullName: string;
 };
 
 const emptyForm = (): ResidentCollectionFormState => ({
   residentName: "",
   id: "",
-  wasteType: "",
+  wasteType: "Organic",
   weight: "",
+  collectionDate: new Date().toISOString().slice(0, 10),
 });
+
+const getDisplayDateValue = (value: ResidentCollectionRow["collectionDate"]): string => {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  if (value instanceof Timestamp) {
+    return value.toDate().toISOString().slice(0, 10);
+  }
+  const parsedValue = new Date(value);
+  return Number.isNaN(parsedValue.getTime()) ? new Date().toISOString().slice(0, 10) : parsedValue.toISOString().slice(0, 10);
+};
+
+const findResidentOption = (residentOptions: ResidentOption[], data: Record<string, unknown>) => {
+  const residentIDValue = String(data.residentID || data.residentId || data.resident_id || "").trim();
+  const userIdValue = String(data.userId || data.user_id || data.residentId || data.resident_id || "").trim();
+
+  const residentMatch = residentIDValue
+    ? residentOptions.find((option) => option.residentID.toLowerCase() === residentIDValue.toLowerCase())
+    : undefined;
+
+  if (residentMatch) {
+    return residentMatch;
+  }
+
+  return userIdValue ? residentOptions.find((option) => option.uid === userIdValue) : undefined;
+};
 
 export default function AdminCollectionCenterPage() {
   const pathname = usePathname();
-  const [query, setQuery] = useState("");
-  const [rows, setRows] = useState<ResidentCollectionRow[]>([
-    { id: "RC-001", residentName: "Nimal Perera", wasteType: "Plastic", weight: "12 kg" },
-    { id: "RC-002", residentName: "Sajith Fernando", wasteType: "Paper", weight: "8 kg" },
-    { id: "RC-003", residentName: "Mala Jayasuriya", wasteType: "Glass", weight: "15 kg" },
-  ]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [rows, setRows] = useState<ResidentCollectionRow[]>([]);
+  const [residentOptions, setResidentOptions] = useState<ResidentOption[]>([]);
+  const [residentLookupError, setResidentLookupError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [formData, setFormData] = useState<ResidentCollectionFormState>(emptyForm());
 
+  useEffect(() => {
+    const loadResidentOptions = async () => {
+      const residentSnapshot = await getDocs(firestoreQuery(collection(db, "users"), where("role", "==", "resident")));
+      const residents = residentSnapshot.docs
+        .map((documentSnapshot) => {
+          const data = documentSnapshot.data();
+          const residentID = String(data.residentID || "").trim();
+          const fullName = String(data.fullName || "").trim();
+          return residentID ? { uid: documentSnapshot.id, residentID, fullName } : null;
+        })
+        .filter((entry): entry is ResidentOption => Boolean(entry));
+      setResidentOptions(residents);
+    };
+
+    const backfillMissingResidentData = async () => {
+      const residentSnapshot = await getDocs(firestoreQuery(collection(db, "users"), where("role", "==", "resident")));
+      const residentsById = new Map<string, ResidentOption>();
+      residentSnapshot.docs.forEach((documentSnapshot) => {
+        const data = documentSnapshot.data();
+        const residentID = String(data.residentID || "").trim();
+        const fullName = String(data.fullName || "").trim();
+        if (residentID) {
+          residentsById.set(residentID.toLowerCase(), { uid: documentSnapshot.id, residentID, fullName });
+        }
+      });
+
+      const collectionSnapshot = await getDocs(firestoreQuery(collection(db, "wasteCollections"), orderBy("collectionDate", "desc")));
+      const batch = writeBatch(db);
+      let needsCommit = false;
+
+      collectionSnapshot.docs.forEach((documentSnapshot) => {
+        const data = documentSnapshot.data();
+        const residentIDValue = String(data.residentID || data.residentId || data.resident_id || "").trim();
+        const residentNameValue = String(data.residentName || data.resident_name || "").trim();
+        const userIdValue = String(data.userId || data.user_id || data.residentId || data.resident_id || "").trim();
+        const residentMatch = residentIDValue
+          ? residentsById.get(residentIDValue.toLowerCase())
+          : userIdValue
+            ? residentsById.get(userIdValue.toLowerCase())
+            : undefined;
+        const updates: Record<string, unknown> = {};
+
+        if (!residentNameValue && residentMatch?.fullName) {
+          updates.residentName = residentMatch.fullName;
+        }
+
+        if (!residentIDValue && residentMatch?.residentID) {
+          updates.residentID = residentMatch.residentID;
+        }
+
+        if (!data.residentId && residentMatch?.uid) {
+          updates.residentId = residentMatch.uid;
+          updates.userId = residentMatch.uid;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          batch.update(doc(db, "wasteCollections", documentSnapshot.id), updates);
+          needsCommit = true;
+        }
+      });
+
+      if (needsCommit) {
+        await batch.commit();
+      }
+    };
+
+    void migrateLegacyWasteTypes();
+    void loadResidentOptions();
+    void backfillMissingResidentData();
+
+    return undefined;
+  }, []);
+
+  useEffect(() => {
+    const q = firestoreQuery(collection(db, "wasteCollections"), orderBy("collectionDate", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const snapshotRows = snapshot.docs.map((documentSnapshot) => {
+        const data = documentSnapshot.data();
+        console.log("[collection-center] raw row data", data);
+        const residentMatch = findResidentOption(residentOptions, data);
+        const resolvedResidentName = String(data.residentName || data.resident_name || residentMatch?.fullName || "").trim();
+        const resolvedResidentID = String(data.residentID || data.residentId || data.resident_id || residentMatch?.residentID || "").trim();
+        return {
+          id: documentSnapshot.id,
+          residentName: resolvedResidentName,
+          residentID: resolvedResidentID,
+          residentId: String(data.residentId || data.userId || data.user_id || residentMatch?.uid || data.id || "").trim(),
+          userId: String(data.userId || data.user_id || residentMatch?.uid || "").trim(),
+          wasteType: normalizeWasteType(String(data.wasteType ?? "")) as WasteType,
+          weight: Number(data.weight ?? 0),
+          pointsEarned: Number(data.pointsEarned ?? 0),
+          collectionDate: data.collectionDate ?? data.collectedAt ?? null,
+          createdAt: data.createdAt ?? null,
+          updatedAt: data.updatedAt ?? null,
+        } as ResidentCollectionRow;
+      });
+      setRows(snapshotRows);
+    });
+
+    return () => unsubscribe();
+  }, [residentOptions]);
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((row) => row.id.toLowerCase().includes(q));
-  }, [query, rows]);
+    return rows.filter((row) => row.residentID.toLowerCase().includes(q));
+  }, [searchQuery, rows]);
 
   const openAddModal = () => {
     setEditingRowId(null);
+    setResidentLookupError("");
     setFormData(emptyForm());
     setIsModalOpen(true);
   };
 
   const openEditModal = (row: ResidentCollectionRow) => {
     setEditingRowId(row.id);
+    setResidentLookupError("");
     setFormData({
       residentName: row.residentName,
-      id: row.id,
+      id: row.residentID,
       wasteType: row.wasteType,
-      weight: row.weight,
+      weight: String(row.weight),
+      collectionDate: getDisplayDateValue(row.collectionDate),
     });
     setIsModalOpen(true);
   };
@@ -86,24 +244,78 @@ export default function AdminCollectionCenterPage() {
     setFormData((current) => ({ ...current, [field]: value }));
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleResidentIdChange = (value: string) => {
+    const trimmedValue = value.trim();
+    const residentMatch = residentOptions.find((option) => option.residentID.toLowerCase() === trimmedValue.toLowerCase());
 
-    const residentName = formData.residentName.trim();
-    const id = formData.id.trim();
-    const wasteType = formData.wasteType.trim();
-    const weight = formData.weight.trim();
+    setFormData((current) => ({
+      ...current,
+      id: value,
+      residentName: residentMatch ? residentMatch.fullName : "",
+    }));
 
-    if (!residentName || !id || !wasteType || !weight) {
+    if (!trimmedValue) {
+      setResidentLookupError("");
       return;
     }
 
-    if (editingRowId) {
-      setRows((current) =>
-        current.map((row) => (row.id === editingRowId ? { ...row, residentName, id, wasteType, weight } : row))
-      );
-    } else {
-      setRows((current) => [{ id, residentName, wasteType, weight }, ...current]);
+    if (residentMatch) {
+      setResidentLookupError("");
+      return;
+    }
+
+    setResidentLookupError("No resident found with this ID");
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const residentName = formData.residentName.trim();
+    const residentId = formData.id.trim();
+    const wasteType = normalizeWasteType(formData.wasteType) as WasteType;
+    const weightValue = Number(formData.weight);
+    const collectionDateValue = formData.collectionDate || new Date().toISOString().slice(0, 10);
+
+    if (!residentId || !wasteType || !Number.isFinite(weightValue) || weightValue <= 0) {
+      return;
+    }
+
+    if (!residentName) {
+      const residentMatch = residentOptions.find((option) => option.residentID.toLowerCase() === residentId.toLowerCase());
+      if (!residentMatch) {
+        setResidentLookupError("No resident found with this ID");
+        return;
+      }
+      setFormData((current) => ({ ...current, residentName: residentMatch.fullName }));
+    }
+
+    const pointsEarned = calculatePointsEarned(weightValue, wasteType);
+
+    try {
+      const residentMatches = await getDocs(firestoreQuery(collection(db, "users"), where("residentID", "==", residentId)));
+      const resolvedResident = residentMatches.empty ? null : residentMatches.docs[0];
+      const resolvedResidentId = resolvedResident?.id || residentId;
+      const resolvedResidentName = (resolvedResident?.data().fullName as string | undefined)?.trim() || residentName || "";
+      const payload = {
+        residentName: resolvedResidentName,
+        residentID: residentId,
+        residentId: resolvedResidentId,
+        userId: resolvedResidentId,
+        wasteType,
+        weight: weightValue,
+        pointsEarned,
+        collectionDate: collectionDateValue,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (editingRowId) {
+        await updateDoc(doc(db, "wasteCollections", editingRowId), payload);
+      } else {
+        await addDoc(collection(db, "wasteCollections"), payload);
+      }
+    } catch (error) {
+      console.error("Error saving collection record:", error);
     }
 
     setIsModalOpen(false);
@@ -114,6 +326,7 @@ export default function AdminCollectionCenterPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingRowId(null);
+    setResidentLookupError("");
     setFormData(emptyForm());
   };
 
@@ -193,8 +406,8 @@ export default function AdminCollectionCenterPage() {
 
             <div className="route-search">
               <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search resident ID..."
                 aria-label="Search resident collection records"
               />
@@ -205,6 +418,7 @@ export default function AdminCollectionCenterPage() {
                 <span>RESIDENT NAME</span>
                 <span>ID</span>
                 <span>WASTE TYPE</span>
+                <span>DATE</span>
                 <span>WEIGHT</span>
               </div>
 
@@ -217,10 +431,11 @@ export default function AdminCollectionCenterPage() {
                 filtered.map((row, index) => (
                   <div key={row.id} className={`route-row ${index % 2 === 1 ? "route-row--alt" : ""}`}>
                     <span>{row.residentName}</span>
-                    <span>{row.id}</span>
+                    <span>{row.residentID}</span>
                     <span>{row.wasteType}</span>
+                    <span>{row.collectionDate ? new Date(getDisplayDateValue(row.collectionDate)).toLocaleDateString() : "—"}</span>
                     <div className="weight-cell">
-                      <span className="weight-pill">{row.weight}</span>
+                      <span className="weight-pill">{row.weight} kg</span>
                       <button type="button" className="edit-button" onClick={() => openEditModal(row)}>
                         ✎ Edit
                       </button>
@@ -250,29 +465,64 @@ export default function AdminCollectionCenterPage() {
                   <span>Resident Name</span>
                   <input
                     value={formData.residentName}
-                    onChange={(event) => handleFieldChange("residentName", event.target.value)}
-                    placeholder="Enter resident name"
+                    readOnly
+                    placeholder="Auto-filled from resident ID"
                   />
                 </label>
                 <label>
                   <span>ID</span>
                   <input
                     value={formData.id}
-                    onChange={(event) => handleFieldChange("id", event.target.value)}
+                    onChange={(event) => handleResidentIdChange(event.target.value)}
+                    onBlur={() => {
+                      if (!formData.id.trim()) {
+                        setResidentLookupError("");
+                        return;
+                      }
+                      const residentMatch = residentOptions.find((option) => option.residentID.toLowerCase() === formData.id.trim().toLowerCase());
+                      if (!residentMatch) {
+                        setResidentLookupError("No resident found with this ID");
+                      }
+                    }}
                     placeholder="Enter resident ID"
+                    list="resident-id-options"
+                    autoComplete="off"
+                    readOnly={Boolean(editingRowId)}
                   />
+                  <datalist id="resident-id-options">
+                    {residentOptions.map((option) => (
+                      <option key={option.uid} value={option.residentID} />
+                    ))}
+                  </datalist>
+                  {residentLookupError ? <span className="form-help form-help--error">{residentLookupError}</span> : <span className="form-help">Pick or type an existing resident ID to auto-fill the name.</span>}
                 </label>
                 <label>
                   <span>Waste Type</span>
-                  <input
+                  <select
                     value={formData.wasteType}
                     onChange={(event) => handleFieldChange("wasteType", event.target.value)}
-                    placeholder="Enter waste type"
+                  >
+                    {WASTE_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Date</span>
+                  <input
+                    type="date"
+                    value={formData.collectionDate}
+                    onChange={(event) => handleFieldChange("collectionDate", event.target.value)}
                   />
                 </label>
                 <label>
                   <span>Weight</span>
                   <input
+                    type="number"
+                    min="0"
+                    step="0.1"
                     value={formData.weight}
                     onChange={(event) => handleFieldChange("weight", event.target.value)}
                     placeholder="Enter weight"
@@ -390,6 +640,15 @@ export default function AdminCollectionCenterPage() {
             width: min(100%, 1000px);
           }
           .route-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
+          .form-help {
+            display: block;
+            margin-top: 6px;
+            font-size: 0.8rem;
+            color: #4b6b4f;
+          }
+          .form-help--error {
+            color: #b42318;
+          }
           .route-search { margin-bottom: 14px; }
           .route-search input {
             width: 100%;
@@ -404,7 +663,7 @@ export default function AdminCollectionCenterPage() {
           .route-table { display: grid; gap: 10px; overflow-x: auto; }
           .route-row {
             display: grid;
-            grid-template-columns: 1.5fr 1fr 1.2fr 1.4fr;
+            grid-template-columns: 1.4fr 1fr 1fr 1fr 1.4fr;
             gap: 16px;
             align-items: center;
             min-width: 760px;
