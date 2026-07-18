@@ -16,7 +16,6 @@ const LEGACY_WASTE_TYPE_MAP: Record<string, WasteType> = {
   paper: "E-waste",
   glass: "Recycle",
   recyclable: "Recycle",
-  "recyclable": "Recycle",
   "e-waste": "E-waste",
   "e waste": "E-waste",
 };

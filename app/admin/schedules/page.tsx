@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { RoleGuard } from "@/components/RoleGuard";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 
@@ -34,43 +34,254 @@ type Collector = {
   fullName: string;
 };
 
+type Driver = {
+  uid: string;
+  fullName: string;
+};
+
+type VehicleOption = {
+  id: string;
+  driver: string;
+};
+
+type RouteOption = {
+  id: string;
+  region: string;
+};
+
+type ScheduleRow = {
+  id: string;
+  collectorId: string;
+  collectorName: string;
+  driverId: string;
+  driverName: string;
+  vehicleNo: string;
+  region: string;
+  routeId: string;
+  date: string;
+  description: string;
+  createdAt?: Timestamp | null;
+};
+
+type ScheduleFormState = {
+  collectorId: string;
+  driverId: string;
+  vehicleNo: string;
+  region: string;
+  routeId: string;
+  date: string;
+  description: string;
+};
+
+const createEmptyForm = (): ScheduleFormState => ({
+  collectorId: "",
+  driverId: "",
+  vehicleNo: "",
+  region: "Horana",
+  routeId: "",
+  date: new Date().toISOString().slice(0, 10),
+  description: "",
+});
+
+const formatDisplayDate = (value: string) => {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString();
+};
+
 export default function AdminSchedulesPage() {
   const pathname = usePathname();
   const { profile } = useAuth();
 
   const [collectors, setCollectors] = useState<Collector[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+  const [routes, setRoutes] = useState<RouteOption[]>([]);
+  const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
-
-  const [selectedCollector, setSelectedCollector] = useState("");
-  const [selectedRegion, setSelectedRegion] = useState("Horana");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [description, setDescription] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<ScheduleFormState>(createEmptyForm());
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState({ text: "", type: "" });
+  const [message, setMessage] = useState<{ text: string; type: "success" | "error" | "" }>({ text: "", type: "" });
+  const [routeLookupError, setRouteLookupError] = useState("");
+  const [vehicleLookupError, setVehicleLookupError] = useState("");
 
   useEffect(() => {
-    async function fetchCollectors() {
+    const loadReferenceData = async () => {
       try {
-        const q = query(collection(db, "users"), where("role", "==", "collector"));
-        const snapshot = await getDocs(q);
-        const collectorList = snapshot.docs.map(doc => ({
-          uid: doc.id,
-          fullName: doc.data().fullName || "Unknown Collector"
-        }));
-        setCollectors(collectorList);
+        const [collectorSnapshot, driverSnapshot, vehicleSnapshot, routeSnapshot] = await Promise.all([
+          getDocs(query(collection(db, "users"), where("role", "==", "collector"))),
+          getDocs(query(collection(db, "users"), where("role", "==", "driver"))),
+          getDocs(collection(db, "activeVehicles")),
+          getDocs(collection(db, "routes")),
+        ]);
+
+        setCollectors(
+          collectorSnapshot.docs.map((documentSnapshot) => ({
+            uid: documentSnapshot.id,
+            fullName: String(documentSnapshot.data().fullName || "Unknown Collector"),
+          }))
+        );
+
+        setDrivers(
+          driverSnapshot.docs.map((documentSnapshot) => ({
+            uid: documentSnapshot.id,
+            fullName: String(documentSnapshot.data().fullName || "Unknown Driver"),
+          }))
+        );
+
+        setVehicles(
+          vehicleSnapshot.docs.map((documentSnapshot) => ({
+            id: String(documentSnapshot.data().id || documentSnapshot.id || ""),
+            driver: String(documentSnapshot.data().driver || ""),
+          })).filter((vehicle) => Boolean(vehicle.id))
+        );
+
+        setRoutes(
+          routeSnapshot.docs.map((documentSnapshot) => ({
+            id: String(documentSnapshot.data().routeId || documentSnapshot.id || ""),
+            region: String(documentSnapshot.data().region || ""),
+          })).filter((route) => Boolean(route.id))
+        );
       } catch (error) {
-        console.error("Error fetching collectors:", error);
+        console.error("Error loading schedule references:", error);
       } finally {
         setLoading(false);
       }
-    }
-    fetchCollectors();
+    };
+
+    void loadReferenceData();
+
+    const unsubscribe = onSnapshot(collection(db, "schedules"), (snapshot) => {
+      const nextSchedules = snapshot.docs
+        .map((documentSnapshot) => {
+          const data = documentSnapshot.data();
+          return {
+            id: documentSnapshot.id,
+            collectorId: String(data.collectorId || ""),
+            collectorName: String(data.collectorName || ""),
+            driverId: String(data.driverId || ""),
+            driverName: String(data.driverName || ""),
+            vehicleNo: String(data.vehicleNo || ""),
+            region: String(data.region || ""),
+            routeId: String(data.routeId || ""),
+            date: String(data.date || ""),
+            description: String(data.description || ""),
+            createdAt: data.createdAt instanceof Timestamp ? data.createdAt : null,
+          } as ScheduleRow;
+        })
+        .sort((left, right) => {
+          const leftDate = left.date || "";
+          const rightDate = right.date || "";
+          if (leftDate !== rightDate) {
+            return leftDate.localeCompare(rightDate);
+          }
+          const leftTime = left.createdAt instanceof Timestamp ? left.createdAt.toMillis() : 0;
+          const rightTime = right.createdAt instanceof Timestamp ? right.createdAt.toMillis() : 0;
+          return rightTime - leftTime;
+        });
+
+      setSchedules(nextSchedules);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const handleSchedule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCollector) {
-      setMessage({ text: "Please select a collector.", type: "error" });
+  const filteredSchedules = useMemo(() => {
+    const queryValue = searchQuery.trim().toLowerCase();
+    if (!queryValue) {
+      return schedules;
+    }
+
+    return schedules.filter((schedule) => [schedule.collectorName, schedule.routeId].some((value) => value.toLowerCase().includes(queryValue)));
+  }, [searchQuery, schedules]);
+
+  const openAddModal = () => {
+    setEditingScheduleId(null);
+    setMessage({ text: "", type: "" });
+    setRouteLookupError("");
+    setVehicleLookupError("");
+    setFormData(createEmptyForm());
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (schedule: ScheduleRow) => {
+    setEditingScheduleId(schedule.id);
+    setMessage({ text: "", type: "" });
+    setRouteLookupError("");
+    setVehicleLookupError("");
+    setFormData({
+      collectorId: schedule.collectorId,
+      driverId: schedule.driverId,
+      vehicleNo: schedule.vehicleNo,
+      region: schedule.region,
+      routeId: schedule.routeId,
+      date: schedule.date,
+      description: schedule.description,
+    });
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingScheduleId(null);
+    setMessage({ text: "", type: "" });
+    setRouteLookupError("");
+    setVehicleLookupError("");
+    setFormData(createEmptyForm());
+  };
+
+  const handleFieldChange = (field: keyof ScheduleFormState, value: string) => {
+    setFormData((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleRouteIdChange = (value: string) => {
+    const trimmedValue = value.trim();
+    setFormData((current) => ({ ...current, routeId: value }));
+
+    if (!trimmedValue) {
+      setRouteLookupError("");
+      return;
+    }
+
+    const matchedRoute = routes.find((route) => route.id.toLowerCase() === trimmedValue.toLowerCase());
+    if (matchedRoute) {
+      setRouteLookupError("");
+      setFormData((current) => ({ ...current, routeId: trimmedValue, region: current.region || matchedRoute.region }));
+      return;
+    }
+
+    setRouteLookupError("No matching route found");
+  };
+
+  const handleVehicleNoChange = (value: string) => {
+    const trimmedValue = value.trim();
+    setFormData((current) => ({ ...current, vehicleNo: value }));
+
+    if (!trimmedValue) {
+      setVehicleLookupError("");
+      return;
+    }
+
+    const matchedVehicle = vehicles.find((vehicle) => vehicle.id.toLowerCase() === trimmedValue.toLowerCase());
+    if (matchedVehicle) {
+      setVehicleLookupError("");
+      return;
+    }
+
+    setVehicleLookupError("No matching vehicle found");
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!formData.collectorId || !formData.date) {
+      setMessage({ text: "Please Select a collector and date before saving.", type: "error" });
       return;
     }
 
@@ -78,22 +289,36 @@ export default function AdminSchedulesPage() {
     setMessage({ text: "", type: "" });
 
     try {
-      const collector = collectors.find(c => c.uid === selectedCollector);
-      await addDoc(collection(db, "schedules"), {
-        collectorId: selectedCollector,
-        collectorName: collector?.fullName || "Unknown",
-        region: selectedRegion,
-        date: selectedDate,
-        description: description,
+      const collector = collectors.find((entry) => entry.uid === formData.collectorId);
+      const driver = drivers.find((entry) => entry.uid === formData.driverId);
+      const payload = {
+        collectorId: formData.collectorId,
+        collectorName: collector?.fullName || "Unknown Collector",
+        driverId: formData.driverId,
+        driverName: driver?.fullName || "",
+        vehicleNo: formData.vehicleNo,
+        region: formData.region,
+        routeId: formData.routeId,
+        date: formData.date,
+        description: formData.description,
         status: "pending",
-        createdAt: serverTimestamp(),
-      });
+        updatedAt: serverTimestamp(),
+      };
 
-      setMessage({ text: "Schedule created successfully!", type: "success" });
-      setDescription("");
+      if (editingScheduleId) {
+        await updateDoc(doc(db, "schedules", editingScheduleId), payload);
+      } else {
+        await addDoc(collection(db, "schedules"), {
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      setMessage({ text: editingScheduleId ? "Schedule updated successfully." : "Schedule created successfully.", type: "success" });
+      closeModal();
     } catch (error) {
-      console.error("Error creating schedule:", error);
-      setMessage({ text: "Failed to create schedule. Please try again.", type: "error" });
+      console.error("Error saving schedule:", error);
+      setMessage({ text: "Failed to save schedule. Please try again.", type: "error" });
     } finally {
       setIsSubmitting(false);
     }
@@ -136,7 +361,7 @@ export default function AdminSchedulesPage() {
                   </span>
                   <span className="admin-nav-label">{item.label}</span>
                 </Link>
-              ),
+              )
             )}
           </nav>
         </aside>
@@ -156,79 +381,183 @@ export default function AdminSchedulesPage() {
             <div>
               <span className="admin-chip">SCHEDULES</span>
               <h1>Schedules</h1>
-              <p>Create and manage pickup schedules for collectors.</p>
+              <p>Create and manage pickup schedules for collectors and drivers.</p>
             </div>
           </section>
 
-          <section className="schedule-form-card">
-            <form onSubmit={handleSchedule} className="schedule-form">
-              <div className="form-group">
-                <label htmlFor="collector">Select Collector</label>
-                <select
-                  id="collector"
-                  value={selectedCollector}
-                  onChange={(e) => setSelectedCollector(e.target.value)}
-                  disabled={loading}
-                >
-                  <option value="">-- Choose a collector --</option>
-                  {collectors.map((c) => (
-                    <option key={c.uid} value={c.uid}>
-                      {c.fullName}
-                    </option>
-                  ))}
-                </select>
+          <section className="route-card">
+            <div className="route-top">
+              <div>
+                <h2>Scheduled tasks</h2>
+                <p>Review and update upcoming collection assignments.</p>
               </div>
-
-              <div className="form-group">
-                <label htmlFor="region">Select Region</label>
-                <select
-                  id="region"
-                  value={selectedRegion}
-                  onChange={(e) => setSelectedRegion(e.target.value)}
-                >
-                  <option value="Horana">Horana</option>
-                  <option value="Colombo">Colombo</option>
-                  <option value="Gampaha">Gampaha</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="date">Select Date</label>
-                <input
-                  type="date"
-                  id="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="description">Description</label>
-                <textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Enter pickup details or notes..."
-                  rows={4}
-                />
-              </div>
-
-              {message.text && (
-                <div className={`form-message ${message.type}`}>
-                  {message.text}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="schedule-btn"
-                disabled={isSubmitting || loading}
-              >
-                {isSubmitting ? "Scheduling..." : "Schedule"}
+              <button className="add-button" type="button" onClick={openAddModal}>
+                + Add
               </button>
-            </form>
+            </div>
+
+            {message.text ? <div className={`form-message ${message.type}`}>{message.text}</div> : null}
+
+            <div className="route-search">
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search route ID or collector..."
+                aria-label="Search scheduled tasks"
+              />
+            </div>
+
+            <div className="route-table">
+              <div className="route-row route-row--header">
+                <span>DATE</span>
+                <span>COLLECTOR</span>
+                <span>DRIVER</span>
+                <span>VEHICLE</span>
+                <span>ROUTE ID</span>
+                <span>ACTION</span>
+              </div>
+
+              {filteredSchedules.length === 0 ? (
+                <div className="empty-state">
+                  <strong>No schedules found</strong>
+                  <span>Try another search term or add a new schedule.</span>
+                </div>
+              ) : (
+                filteredSchedules.map((schedule, index) => (
+                  <div key={schedule.id} className={`route-row ${index % 2 === 1 ? "route-row--alt" : ""}`}>
+                    <span>{formatDisplayDate(schedule.date)}</span>
+                    <span>{schedule.collectorName || "—"}</span>
+                    <span>{schedule.driverName || "—"}</span>
+                    <span>{schedule.vehicleNo || "—"}</span>
+                    <span>{schedule.routeId || "—"}</span>
+                    <div className="weight-cell">
+                      <button type="button" className="edit-button" onClick={() => openEditModal(schedule)}>
+                        ✎ Edit
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </section>
         </main>
+
+        {isModalOpen ? (
+          <div className="modal-backdrop" role="presentation" onClick={closeModal}>
+            <div className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <p className="modal-label">Schedule</p>
+                  <h3>{editingScheduleId ? "Edit schedule" : "Add schedule"}</h3>
+                </div>
+                <button type="button" className="modal-close" onClick={closeModal}>
+                  ×
+                </button>
+              </div>
+
+              <form className="modal-form" onSubmit={handleSubmit}>
+                <label>
+                  <span>Select Collector</span>
+                  <select
+                    value={formData.collectorId}
+                    onChange={(event) => handleFieldChange("collectorId", event.target.value)}
+                    disabled={loading}
+                  >
+                    <option value="">-- Choose a collector --</option>
+                    {collectors.map((collector) => (
+                      <option key={collector.uid} value={collector.uid}>
+                        {collector.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>Select Driver</span>
+                  <select
+                    value={formData.driverId}
+                    onChange={(event) => handleFieldChange("driverId", event.target.value)}
+                    disabled={loading}
+                  >
+                    <option value="">-- Choose a driver --</option>
+                    {drivers.map((driver) => (
+                      <option key={driver.uid} value={driver.uid}>
+                        {driver.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>Vehicle No</span>
+                  <input
+                    value={formData.vehicleNo}
+                    onChange={(event) => handleVehicleNoChange(event.target.value)}
+                    placeholder="Enter or select vehicle number"
+                    list="vehicle-options"
+                    autoComplete="off"
+                  />
+                  <datalist id="vehicle-options">
+                    {vehicles.map((vehicle) => (
+                      <option key={vehicle.id} value={vehicle.id} />
+                    ))}
+                  </datalist>
+                  {vehicleLookupError ? <span className="form-help form-help--error">{vehicleLookupError}</span> : <span className="form-help">Type to match existing vehicle numbers from the vehicle dataset.</span>}
+                </label>
+
+                <label>
+                  <span>Route ID</span>
+                  <input
+                    value={formData.routeId}
+                    onChange={(event) => handleRouteIdChange(event.target.value)}
+                    placeholder="Enter or select route ID"
+                    list="route-options"
+                    autoComplete="off"
+                  />
+                  <datalist id="route-options">
+                    {routes.map((route) => (
+                      <option key={route.id} value={route.id} />
+                    ))}
+                  </datalist>
+                  {routeLookupError ? <span className="form-help form-help--error">{routeLookupError}</span> : <span className="form-help">Type to match existing route IDs and auto-fill the region when available.</span>}
+                </label>
+
+                <label>
+                  <span>Select Region</span>
+                  <select value={formData.region} onChange={(event) => handleFieldChange("region", event.target.value)}>
+                    <option value="Horana">Horana</option>
+                    <option value="Colombo">Colombo</option>
+                    <option value="Gampaha">Gampaha</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Select Date</span>
+                  <input type="date" value={formData.date} onChange={(event) => handleFieldChange("date", event.target.value)} />
+                </label>
+
+                <label>
+                  <span>Description</span>
+                  <textarea
+                    value={formData.description}
+                    onChange={(event) => handleFieldChange("description", event.target.value)}
+                    rows={4}
+                    placeholder="Enter pickup details or notes..."
+                  />
+                </label>
+
+                <div className="modal-actions">
+                  <button type="button" className="modal-secondary" onClick={closeModal}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="modal-primary" disabled={isSubmitting || loading}>
+                    {isSubmitting ? "Saving..." : editingScheduleId ? "Save changes" : "Schedule"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
 
         <style>{`
           .admin-root {
@@ -240,7 +569,6 @@ export default function AdminSchedulesPage() {
             font-family: 'DM Sans', sans-serif;
             color: #15251f;
           }
-
           .admin-sidebar {
             width: 260px;
             background: #ffffff;
@@ -251,13 +579,7 @@ export default function AdminSchedulesPage() {
             flex-direction: column;
             gap: 32px;
           }
-
-          .admin-logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-          }
-
+          .admin-logo { display: flex; align-items: center; gap: 12px; }
           .admin-logo-icon {
             width: 44px;
             height: 44px;
@@ -268,23 +590,9 @@ export default function AdminSchedulesPage() {
             place-items: center;
             font-size: 1.2rem;
           }
-
-          .admin-logo p {
-            margin: 0;
-            font-weight: 700;
-            font-size: 1rem;
-          }
-
-          .admin-logo small {
-            color: #6b7280;
-            font-size: 0.75rem;
-          }
-
-          .admin-nav {
-            display: grid;
-            gap: 10px;
-          }
-
+          .admin-logo p { margin: 0; font-weight: 700; font-size: 1rem; }
+          .admin-logo small { color: #6b7280; font-size: 0.75rem; }
+          .admin-nav { display: grid; gap: 10px; }
           .admin-nav-item {
             display: flex;
             align-items: center;
@@ -298,46 +606,12 @@ export default function AdminSchedulesPage() {
             transition: all 0.2s ease;
             font-weight: 600;
           }
-
-          .admin-nav-icon {
-            width: 22px;
-            display: inline-block;
-            text-align: center;
-            font-size: 1rem;
-          }
-
-          .admin-nav-label {
-            flex: 1;
-          }
-
-          .admin-nav-item:hover,
-          .admin-nav-item.active {
-            background: #e6f4e8;
-            color: #166529;
-          }
-
-          .admin-nav-separator {
-            height: 1px;
-            border-radius: 999px;
-            background: rgba(22, 101, 31, 0.08);
-            margin: 10px 0;
-          }
-
-          .admin-main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-            min-width: 0;
-          }
-
-          .admin-top {
-            display: flex;
-            justify-content: flex-end;
-            gap: 18px;
-            align-items: center;
-          }
-
+          .admin-nav-icon { width: 22px; display: inline-block; text-align: center; font-size: 1rem; }
+          .admin-nav-label { flex: 1; }
+          .admin-nav-item:hover, .admin-nav-item.active { background: #e6f4e8; color: #166529; }
+          .admin-nav-separator { height: 1px; border-radius: 999px; background: rgba(22, 101, 31, 0.08); margin: 10px 0; }
+          .admin-main { flex: 1; display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+          .admin-top { display: flex; justify-content: flex-end; gap: 18px; align-items: center; }
           .admin-usercard {
             display: flex;
             align-items: center;
@@ -347,7 +621,6 @@ export default function AdminSchedulesPage() {
             padding: 12px 16px;
             box-shadow: 0 20px 50px rgba(23, 63, 31, 0.06);
           }
-
           .admin-avatar {
             width: 48px;
             height: 48px;
@@ -358,150 +631,166 @@ export default function AdminSchedulesPage() {
             place-items: center;
             font-weight: 700;
           }
-
-          .admin-user-name,
-          .admin-user-role {
-            margin: 0;
-          }
-
-          .admin-user-name {
-            font-weight: 700;
-          }
-
-          .admin-user-role {
-            color: #6b7280;
-            font-size: 0.9rem;
-          }
-
+          .admin-user-name, .admin-user-role { margin: 0; }
+          .admin-user-name { font-weight: 700; }
+          .admin-user-role { color: #6b7280; font-size: 0.9rem; }
           .admin-header-card {
             padding: 28px;
             border-radius: 32px;
             background: linear-gradient(90deg, rgba(241, 253, 244, 0.95), rgba(227, 247, 232, 0.95));
             box-shadow: 0 20px 50px rgba(23, 63, 31, 0.08);
           }
-
-          .admin-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 14px;
-            border-radius: 999px;
-            background: #e6f4e8;
-            color: #166529;
-            font-weight: 700;
-            font-size: 0.8rem;
-          }
-
-          .admin-header-card h1 {
-            margin: 16px 0 8px;
-            font-size: 2rem;
-          }
-
-          .admin-header-card p {
-            margin: 0;
-            color: #556b54;
-          }
-
-          .schedule-form-card {
+          .admin-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: #e6f4e8; color: #166529; font-weight: 700; font-size: 0.8rem; }
+          .admin-header-card h1 { margin: 16px 0 8px; font-size: 2rem; }
+          .admin-header-card p { margin: 0; color: #556b54; }
+          .highlight { color: #16a34a; }
+          .route-card {
             background: white;
-            padding: 40px;
-            border-radius: 32px;
             box-shadow: 0 20px 50px rgba(23, 63, 31, 0.08);
-            max-width: 600px;
+            border-radius: 32px;
+            padding: 28px;
+            width: min(100%, 1100px);
           }
-
-          .schedule-form {
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-          }
-
-          .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-          }
-
-          .form-group label {
-            font-weight: 700;
-            font-size: 0.9rem;
-            color: #4b5563;
-          }
-
-          .form-group select,
-          .form-group input,
-          .form-group textarea {
-            padding: 14px 18px;
+          .route-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+          .route-top h2 { margin: 0 0 6px; font-size: 1.2rem; }
+          .route-top p { margin: 0; color: #6b7280; }
+          .route-search { margin-bottom: 14px; }
+          .route-search input {
+            width: 100%;
+            border: 1px solid #d9e9d9;
             border-radius: 16px;
-            border: 1px solid #e5e7eb;
-            background: #f9fafb;
-            font-family: inherit;
-            font-size: 1rem;
+            padding: 14px 16px;
+            background: #f7fbf6;
+            color: #1b3c28;
+            font-size: 0.95rem;
             outline: none;
-            transition: all 0.2s;
           }
-
-          .form-group select:focus,
-          .form-group input:focus,
-          .form-group textarea:focus {
-            border-color: #2e7d32;
-            background: white;
-            box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.1);
-          }
-
-          .schedule-btn {
-            background: #2e7d32;
-            color: white;
+          .route-table { display: grid; gap: 10px; overflow-x: auto; }
+          .route-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;
+            gap: 16px;
+            align-items: center;
+            min-width: 900px;
             padding: 16px;
             border-radius: 18px;
+            background: #f8fbf7;
+            color: #1d3a25;
+          }
+          .route-row--header { background: transparent; font-size: 0.78rem; font-weight: 800; color: #4d6b53; }
+          .route-row--alt { background: #f3f6f3; }
+          .weight-cell { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+          .edit-button {
             border: none;
+            border-radius: 999px;
+            padding: 8px 12px;
+            background: #eef9f2;
+            color: #166529;
             font-weight: 700;
-            font-size: 1rem;
             cursor: pointer;
-            transition: all 0.2s;
-            margin-top: 8px;
           }
-
-          .schedule-btn:hover {
-            background: #1b5e20;
-            transform: translateY(-2px);
+          .add-button {
+            border: none;
+            border-radius: 16px;
+            padding: 14px 22px;
+            background: #eef9f2;
+            color: #166529;
+            font-weight: 800;
+            cursor: pointer;
           }
-
-          .schedule-btn:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
-            transform: none;
-          }
-
+          .empty-state { min-width: 900px; display: grid; gap: 6px; padding: 20px; border-radius: 18px; background: #f8fbf7; color: #1d3a25; }
+          .empty-state span { color: #6b7280; font-size: 0.85rem; }
           .form-message {
+            margin-bottom: 12px;
             padding: 12px 16px;
             border-radius: 12px;
             font-size: 0.9rem;
             font-weight: 600;
           }
-
-          .form-message.success {
-            background: #ecfdf5;
-            color: #065f46;
+          .form-message.success { background: #ecfdf5; color: #065f46; }
+          .form-message.error { background: #fef2f2; color: #991b1b; }
+          .form-help {
+            display: block;
+            margin-top: 6px;
+            font-size: 0.8rem;
+            color: #4b6b4f;
           }
-
-          .form-message.error {
-            background: #fef2f2;
-            color: #991b1b;
+          .form-help--error { color: #b42318; }
+          .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 1000;
           }
-
+          .modal-card {
+            width: min(100%, 560px);
+            background: white;
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
+          }
+          .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 16px;
+          }
+          .modal-label {
+            margin: 0 0 4px;
+            color: #166529;
+            font-weight: 700;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+          }
+          .modal-header h3 { margin: 0; font-size: 1.15rem; }
+          .modal-close {
+            border: none;
+            background: #f3f7f3;
+            color: #4b5563;
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            cursor: pointer;
+            font-size: 1.2rem;
+          }
+          .modal-form { display: grid; gap: 12px; }
+          .modal-form label { display: grid; gap: 6px; font-weight: 600; color: #254332; }
+          .modal-form input, .modal-form select, .modal-form textarea {
+            border: 1px solid #d9e9d9;
+            border-radius: 14px;
+            padding: 12px 14px;
+            background: #f7fbf6;
+            color: #1b3c28;
+            outline: none;
+            font-family: inherit;
+          }
+          .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 4px;
+          }
+          .modal-secondary, .modal-primary {
+            border: none;
+            border-radius: 14px;
+            padding: 11px 16px;
+            font-weight: 700;
+            cursor: pointer;
+          }
+          .modal-secondary { background: #f3f6f3; color: #4b5563; }
+          .modal-primary { background: #166529; color: white; }
+          .modal-primary:disabled { background: #9ca3af; cursor: not-allowed; }
           @media (max-width: 920px) {
-            .admin-root {
-              flex-direction: column;
-            }
-
-            .admin-sidebar {
-              width: 100%;
-            }
-
-            .schedule-form-card {
-              max-width: 100%;
-            }
+            .admin-root { flex-direction: column; }
+            .admin-sidebar { width: 100%; }
+            .route-card { width: 100%; }
+            .route-top { flex-direction: column; align-items: flex-start; }
           }
         `}</style>
       </div>

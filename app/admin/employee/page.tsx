@@ -59,7 +59,8 @@ export default function AdminEmployeePage() {
     employeeID: "",
     name: "",
     role: "collector",
-    contact: ""
+    contact: "",
+    nic: ""
   });
 
 
@@ -95,7 +96,7 @@ export default function AdminEmployeePage() {
 
   const handleAddClick = () => {
     setEditingId(null);
-    setFormData({ employeeID: "", name: "", role: "collector", contact: "" });
+    setFormData({ employeeID: "", name: "", role: "collector", contact: "", nic: "" });
     setIsFormOpen(true);
   };
 
@@ -106,6 +107,7 @@ export default function AdminEmployeePage() {
       name: employee.name,
       role: employee.role,
       contact: employee.contact,
+      nic: "",
     });
     setIsFormOpen(true);
   };

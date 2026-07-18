@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { extractPrefixedNumber, formatPrefixedNumber } from "@/lib/idFormat";
+import { getNextPrefixedId } from "@/lib/idService";
 import {
   collection,
   getDocs,
@@ -148,11 +149,11 @@ export default function AdminUsersPage() {
 
     try {
       // Map name back to fullName for Firestore
-      const { name, ...otherData } = formData;
-      const existingIds = userList
-        .map((user) => extractPrefixedNumber(user.residentID, "R"))
-        .filter((value): value is number => typeof value === "number");
-      const nextResidentID = formData.residentID.trim() || formatPrefixedNumber("R", (existingIds.length ? Math.max(...existingIds) : 0) + 1);
+      const { name, residentID: _ignoredResidentID, ...otherData } = formData;
+      // If the admin provided a residentID manually, use it, otherwise allocate one
+      const nextResidentID = formData.residentID.trim()
+        ? formData.residentID.trim()
+        : await getNextPrefixedId("R", 3);
       const firestoreData = {
         ...otherData,
         residentID: nextResidentID,
@@ -169,7 +170,14 @@ export default function AdminUsersPage() {
         setUserList((prev) =>
           prev.map((u) =>
             u.id === editingId
-              ? { ...u, residentID: nextResidentID, name: name, ...otherData, points: Number(formData.points), residences: Number(formData.residences) }
+              ? {
+                  ...u,
+                  residentID: nextResidentID,
+                  name,
+                  ...otherData,
+                  points: Number(formData.points),
+                  residences: Number(formData.residences),
+                }
               : u
           )
         );

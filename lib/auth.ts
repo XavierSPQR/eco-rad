@@ -8,6 +8,7 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, getDoc, serverTimestamp, query, collection, where, getDocs } from "firebase/firestore";
 import { auth, db } from "./firebase";
+import { getNextPrefixedId } from "./idService";
 
 export type UserRole = "resident" | "collector" | "admin";
 
@@ -48,12 +49,17 @@ export async function signUpResident(
 
   // Step 2: Write the Firestore user profile document
   try {
+    // Allocate a residentID server-side (transactionally) if none provided
+    const residentID = profile.residentID?.trim()
+      ? profile.residentID
+      : await getNextPrefixedId("R", 3);
+
     await setDoc(doc(db, "users", user.uid), {
       ...profile,
       uid: user.uid,
-      email,                    // always use the canonical email param
+      email, // always use the canonical email param
       role: "resident" as UserRole,
-      residentID: profile.residentID ?? "",
+      residentID,
       routeID: profile.routeID ?? "",
       points: 0,
       residences: 0,
