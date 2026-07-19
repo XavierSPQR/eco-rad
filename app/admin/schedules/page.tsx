@@ -77,7 +77,7 @@ const createEmptyForm = (): ScheduleFormState => ({
   collectorId: "",
   driverId: "",
   vehicleNo: "",
-  region: "Horana",
+  region: "",
   routeId: "",
   date: new Date().toISOString().slice(0, 10),
   description: "",
@@ -108,8 +108,6 @@ export default function AdminSchedulesPage() {
   const [formData, setFormData] = useState<ScheduleFormState>(createEmptyForm());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" | "" }>({ text: "", type: "" });
-  const [routeLookupError, setRouteLookupError] = useState("");
-  const [vehicleLookupError, setVehicleLookupError] = useState("");
 
   useEffect(() => {
     const loadReferenceData = async () => {
@@ -204,8 +202,6 @@ export default function AdminSchedulesPage() {
   const openAddModal = () => {
     setEditingScheduleId(null);
     setMessage({ text: "", type: "" });
-    setRouteLookupError("");
-    setVehicleLookupError("");
     setFormData(createEmptyForm());
     setIsModalOpen(true);
   };
@@ -213,8 +209,6 @@ export default function AdminSchedulesPage() {
   const openEditModal = (schedule: ScheduleRow) => {
     setEditingScheduleId(schedule.id);
     setMessage({ text: "", type: "" });
-    setRouteLookupError("");
-    setVehicleLookupError("");
     setFormData({
       collectorId: schedule.collectorId,
       driverId: schedule.driverId,
@@ -231,8 +225,6 @@ export default function AdminSchedulesPage() {
     setIsModalOpen(false);
     setEditingScheduleId(null);
     setMessage({ text: "", type: "" });
-    setRouteLookupError("");
-    setVehicleLookupError("");
     setFormData(createEmptyForm());
   };
 
@@ -241,47 +233,32 @@ export default function AdminSchedulesPage() {
   };
 
   const handleRouteIdChange = (value: string) => {
-    const trimmedValue = value.trim();
-    setFormData((current) => ({ ...current, routeId: value }));
-
-    if (!trimmedValue) {
-      setRouteLookupError("");
-      return;
-    }
-
-    const matchedRoute = routes.find((route) => route.id.toLowerCase() === trimmedValue.toLowerCase());
-    if (matchedRoute) {
-      setRouteLookupError("");
-      setFormData((current) => ({ ...current, routeId: trimmedValue, region: current.region || matchedRoute.region }));
-      return;
-    }
-
-    setRouteLookupError("No matching route found");
-  };
-
-  const handleVehicleNoChange = (value: string) => {
-    const trimmedValue = value.trim();
-    setFormData((current) => ({ ...current, vehicleNo: value }));
-
-    if (!trimmedValue) {
-      setVehicleLookupError("");
-      return;
-    }
-
-    const matchedVehicle = vehicles.find((vehicle) => vehicle.id.toLowerCase() === trimmedValue.toLowerCase());
-    if (matchedVehicle) {
-      setVehicleLookupError("");
-      return;
-    }
-
-    setVehicleLookupError("No matching vehicle found");
+    const matchedRoute = routes.find((route) => route.id === value);
+    setFormData((current) => ({
+      ...current,
+      routeId: value,
+      region: matchedRoute?.region || "",
+    }));
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!formData.collectorId || !formData.date) {
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (!formData.collectorId || !formData.driverId || !formData.vehicleNo || !formData.routeId || !formData.date) {
       setMessage({ text: "Please Select a collector and date before saving.", type: "error" });
+      return;
+    }
+
+    if (formData.date < today) {
+      setMessage({ text: "Past dates are not allowed.", type: "error" });
+      return;
+    }
+
+    const matchedRoute = routes.find((route) => route.id === formData.routeId);
+    if (!matchedRoute) {
+      setMessage({ text: "Please choose a valid route.", type: "error" });
       return;
     }
 
@@ -297,7 +274,7 @@ export default function AdminSchedulesPage() {
         driverId: formData.driverId,
         driverName: driver?.fullName || "",
         vehicleNo: formData.vehicleNo,
-        region: formData.region,
+        region: matchedRoute.region,
         routeId: formData.routeId,
         date: formData.date,
         description: formData.description,
@@ -317,8 +294,14 @@ export default function AdminSchedulesPage() {
       setMessage({ text: editingScheduleId ? "Schedule updated successfully." : "Schedule created successfully.", type: "success" });
       closeModal();
     } catch (error) {
-      console.error("Error saving schedule:", error);
-      setMessage({ text: "Failed to save schedule. Please try again.", type: "error" });
+      const firebaseError = error as { code?: string; message?: string };
+      console.error("Error saving schedule:", firebaseError?.code, firebaseError?.message, error);
+      setMessage({
+        text: firebaseError?.code
+          ? `Failed to save schedule: ${firebaseError.code}`
+          : `Failed to save schedule: ${firebaseError?.message || "Unknown error"}`,
+        type: "error",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -490,50 +473,52 @@ export default function AdminSchedulesPage() {
 
                 <label>
                   <span>Vehicle No</span>
-                  <input
+                  <select
                     value={formData.vehicleNo}
-                    onChange={(event) => handleVehicleNoChange(event.target.value)}
-                    placeholder="Enter or select vehicle number"
-                    list="vehicle-options"
-                    autoComplete="off"
-                  />
-                  <datalist id="vehicle-options">
+                    onChange={(event) => handleFieldChange("vehicleNo", event.target.value)}
+                    disabled={loading}
+                  >
+                    <option value="">-- Choose a vehicle --</option>
                     {vehicles.map((vehicle) => (
-                      <option key={vehicle.id} value={vehicle.id} />
+                      <option key={vehicle.id} value={vehicle.id}>
+                        {vehicle.id}
+                        {vehicle.driver ? ` - ${vehicle.driver}` : ""}
+                      </option>
                     ))}
-                  </datalist>
-                  {vehicleLookupError ? <span className="form-help form-help--error">{vehicleLookupError}</span> : <span className="form-help">Type to match existing vehicle numbers from the vehicle dataset.</span>}
+                  </select>
+                  <span className="form-help">Choose from vehicles stored in the database.</span>
                 </label>
 
                 <label>
                   <span>Route ID</span>
-                  <input
+                  <select
                     value={formData.routeId}
                     onChange={(event) => handleRouteIdChange(event.target.value)}
-                    placeholder="Enter or select route ID"
-                    list="route-options"
-                    autoComplete="off"
-                  />
-                  <datalist id="route-options">
+                    disabled={loading}
+                  >
+                    <option value="">-- Choose a route --</option>
                     {routes.map((route) => (
-                      <option key={route.id} value={route.id} />
+                      <option key={route.id} value={route.id}>
+                        {route.id} - {route.region}
+                      </option>
                     ))}
-                  </datalist>
-                  {routeLookupError ? <span className="form-help form-help--error">{routeLookupError}</span> : <span className="form-help">Type to match existing route IDs and auto-fill the region when available.</span>}
+                  </select>
+                  <span className="form-help">Choose from routes stored in the database. Region will auto-fill.</span>
                 </label>
 
                 <label>
                   <span>Select Region</span>
-                  <select value={formData.region} onChange={(event) => handleFieldChange("region", event.target.value)}>
-                    <option value="Horana">Horana</option>
-                    <option value="Colombo">Colombo</option>
-                    <option value="Gampaha">Gampaha</option>
-                  </select>
+                  <input value={formData.region} readOnly placeholder="Auto-filled from route" />
                 </label>
 
                 <label>
                   <span>Select Date</span>
-                  <input type="date" value={formData.date} onChange={(event) => handleFieldChange("date", event.target.value)} />
+                  <input
+                    type="date"
+                    value={formData.date}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onChange={(event) => handleFieldChange("date", event.target.value)}
+                  />
                 </label>
 
                 <label>

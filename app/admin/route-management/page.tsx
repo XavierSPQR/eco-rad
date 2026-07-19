@@ -49,23 +49,10 @@ const createEmptyForm = (): RouteFormState => ({
   newPoint: "",
 });
 
-const initialRoutes: RouteRow[] = [
-  {
-    id: "RT001",
-    region: "Colombo",
-    points: ["Kotte", "Bambalapitiya", "Wellawatte"],
-  },
-  {
-    id: "RT002",
-    region: "Gampaha",
-    points: ["Ja-Ela", "Negombo"],
-  },
-];
-
 export default function AdminRouteManagementPage() {
   const pathname = usePathname();
   const [query, setQuery] = useState("");
-  const [routes, setRoutes] = useState<RouteRow[]>(initialRoutes);
+  const [routes, setRoutes] = useState<RouteRow[]>([]);
   const [expandedRouteId, setExpandedRouteId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRouteId, setEditingRouteId] = useState<string | null>(null);

@@ -67,61 +67,6 @@ const allWasteTypes: WasteType[] = [
   "Construction Debris",
 ];
 
-const mockWasteCollections: WasteCollectionRow[] = [
-  { date: "2026-05-01", wasteType: "Plastic", collectionId: "WC-1042", weightKg: 420 },
-  { date: "2026-05-01", wasteType: "Paper", collectionId: "WC-1043", weightKg: 350 },
-  { date: "2026-05-02", wasteType: "Glass", collectionId: "WC-1044", weightKg: 280 },
-  { date: "2026-05-03", wasteType: "Metal", collectionId: "WC-1045", weightKg: 210 },
-  { date: "2026-05-03", wasteType: "Organic", collectionId: "WC-1046", weightKg: 380 },
-  { date: "2026-05-04", wasteType: "E-Waste", collectionId: "WC-1047", weightKg: 145 },
-  { date: "2026-05-05", wasteType: "Hazardous", collectionId: "WC-1048", weightKg: 60 },
-  { date: "2026-05-06", wasteType: "Construction Debris", collectionId: "WC-1049", weightKg: 95 },
-  { date: "2026-05-06", wasteType: "Plastic", collectionId: "WC-1050", weightKg: 310 },
-];
-
-const mockVehicleAssignments: VehicleAssignmentRow[] = [
-  {
-    date: "2026-05-01",
-    tripId: "TRIP-8801",
-    driver: "Sumith Dissanayake",
-    collector: "Sanjeewa Perera",
-    vehicleType: "Compactor Truck",
-    vehicleNumber: "WP 3456",
-  },
-  {
-    date: "2026-05-01",
-    tripId: "TRIP-8802",
-    driver: "Nadeesh Sadaruwan",
-    collector: "Thilini Wijesinghe",
-    vehicleType: "Dump Truck",
-    vehicleNumber: "WP 5690",
-  },
-  {
-    date: "2026-05-03",
-    tripId: "TRIP-8803",
-    driver: "Sumith Dissanayake",
-    collector: "Samanthi Silva",
-    vehicleType: "Hook Lift",
-    vehicleNumber: "WP 4534",
-  },
-  {
-    date: "2026-05-03",
-    tripId: "TRIP-8804",
-    driver: "Ruwan Madushanka",
-    collector: "Thilini Wijesinghe",
-    vehicleType: "Rear Loader Dump Truck",
-    vehicleNumber: "WP 8903",
-  },
-  {
-    date: "2026-05-06",
-    tripId: "TRIP-8805",
-    driver: "Ruwan Madushanka",
-    collector: "Sanjeewa Perera",
-    vehicleType: "Front Loader",
-    vehicleNumber: "WP 3998",
-  },
-];
-
 function toTimestamp(dateStr: string) {
   // Safe parse for YYYY-MM-DD
   const [y, m, d] = dateStr.split("-").map((x) => Number(x));
@@ -193,10 +138,19 @@ export default function AdminReportPage() {
         });
         setWasteCollections(wData);
 
-        // For now, vehicle assignments might still be empty or come from a different collection if implemented
-        // Leaving it as empty array or mock if preferred, but schema doesn't specify a vehicleAssignments collection clearly
-        // Let's check if there is a 'trips' or similar. Assuming empty for now.
-        setVehicleAssignments([]);
+        const vSnap = await getDocs(query(collection(db, "schedules"), orderBy("date", "desc")));
+        const vData = vSnap.docs.map((doc) => {
+          const d = doc.data();
+          return {
+            date: String(d.date || ""),
+            tripId: doc.id,
+            driver: String(d.driverName || ""),
+            collector: String(d.collectorName || ""),
+            vehicleType: String(d.vehicleType || ""),
+            vehicleNumber: String(d.vehicleNo || ""),
+          } as VehicleAssignmentRow;
+        });
+        setVehicleAssignments(vData);
       } catch (error) {
         console.error("Error fetching report data:", error);
       } finally {

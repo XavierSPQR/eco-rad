@@ -103,7 +103,7 @@ export async function signUpResident(
   return user;
 }
 
-export async function signIn(email: string, password: string) {
+export async function signIn(email: string, password: string, expectedRole?: UserRole) {
   await ensureTabScopedPersistence();
 
   let user: User;
@@ -117,6 +117,29 @@ export async function signIn(email: string, password: string) {
 
   try {
     const snap = await getDoc(doc(db, "users", user.uid));
+    if (!snap.exists() && expectedRole === "admin") {
+      const adminProfile: UserProfile = {
+        uid: user.uid,
+        email,
+        fullName: email.split("@")[0] || "Admin User",
+        phone: "",
+        district: "",
+        address: "",
+        nic: "",
+        role: "admin",
+        points: 0,
+        residences: 0,
+      };
+
+      await setDoc(doc(db, "users", user.uid), {
+        ...adminProfile,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      return { user, profile: adminProfile };
+    }
+
     return { user, profile: snap.exists() ? (snap.data() as UserProfile) : null };
   } catch (firestoreError: any) {
     console.error(

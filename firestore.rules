@@ -27,9 +27,18 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /activeVehicles/{vehicleId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /schedules/{scheduleId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
-

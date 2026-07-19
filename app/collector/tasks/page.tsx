@@ -30,56 +30,6 @@ type RouteData = {
   points: string[];
 };
 
-// TEMPORARY TEST DATA: remove or gate behind a flag once real schedule/route data is wired in.
-const USE_TEST_DUMMY_DATA = true;
-const dummyRoutePointsByRouteId: Record<string, string[]> = {
-  "R-100": ["Kotte", "Bambalapitiya", "Wellawatte"],
-  "R-101": ["Maharagama", "Nugegoda", "Dehiwala"],
-  "R-102": ["Rajagiriya", "Battaramulla", "Pelawatte"],
-};
-
-const createDummyTasks = (collectorId: string, collectorName: string): ScheduleTask[] => [
-  {
-    id: "dummy-task-1",
-    collectorId,
-    collectorName,
-    driverId: "dummy-driver-1",
-    driverName: "Nimal Perera",
-    vehicleNo: "CT-102",
-    region: "Colombo 07",
-    routeId: "R-100",
-    date: new Date().toISOString().slice(0, 10),
-    description: "Temporary test schedule for the collector task table",
-    status: "pending",
-  },
-  {
-    id: "dummy-task-2",
-    collectorId,
-    collectorName,
-    driverId: "dummy-driver-2",
-    driverName: "Samantha Silva",
-    vehicleNo: "CT-204",
-    region: "Colombo 05",
-    routeId: "R-101",
-    date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    description: "Temporary test schedule for route-based collection",
-    status: "pending",
-  },
-  {
-    id: "dummy-task-3",
-    collectorId,
-    collectorName,
-    driverId: "dummy-driver-3",
-    driverName: "Kasun Fernando",
-    vehicleNo: "CT-310",
-    region: "Colombo 03",
-    routeId: "R-102",
-    date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    description: "Temporary test schedule for the points-marking view",
-    status: "pending",
-  },
-];
-
 export default function CollectorTasksPage() {
   const { user, profile } = useAuth();
   const [tasks, setTasks] = useState<ScheduleTask[]>([]);
@@ -165,31 +115,7 @@ export default function CollectorTasksPage() {
     };
   }, [collectorAccountId]);
 
-  const demoTask = useMemo<ScheduleTask>(() => ({
-    id: "demo-task-1",
-    collectorId: collectorAccountId,
-    collectorName: profile?.fullName || "Demo Collector",
-    driverId: "demo-driver-1",
-    driverName: "Demo Driver",
-    vehicleNo: "CT-102",
-    region: "Colombo 07",
-    routeId: "R-100",
-    date: new Date().toISOString().slice(0, 10),
-    description: "Dummy scheduled collection",
-    status: "pending",
-  }), [collectorAccountId, profile?.fullName]);
-
-  const dummyTasks = useMemo(() => {
-    if (!USE_TEST_DUMMY_DATA) return [];
-    return createDummyTasks(collectorAccountId, profile?.fullName || "Demo Collector");
-  }, [collectorAccountId, profile?.fullName]);
-
-  const visibleTasks = useMemo(() => {
-    if (tasks.length === 0 && !loading && dummyTasks.length > 0) {
-      return dummyTasks;
-    }
-    return tasks;
-  }, [dummyTasks, loading, tasks]);
+  const visibleTasks = useMemo(() => tasks, [tasks]);
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -219,8 +145,7 @@ export default function CollectorTasksPage() {
 
   const openRoutePoints = (task: ScheduleTask) => {
     const matchedRoute = routes.find((route) => route.id.toLowerCase() === task.routeId.toLowerCase());
-    const fallbackPoints = dummyRoutePointsByRouteId[task.routeId] || dummyRoutePointsByRouteId[task.routeId.toUpperCase()];
-    const points = matchedRoute?.points.length ? matchedRoute.points : fallbackPoints || [];
+    const points = matchedRoute?.points.length ? matchedRoute.points : [];
 
     setActiveTask(task);
     setActiveRoutePoints(points);
