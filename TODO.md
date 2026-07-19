@@ -1,8 +1,5 @@
 # TODO
 
-## Completed
-- None yet
+- [x] Update admin waste report dropdown to use system-defined waste types from `lib/wasteTypes.ts` (Organic, E-waste, Recycle)
 
-## In Progress
-- [x] Remove NIC column from admin employees table and remove NIC from add/edit employee form.
 

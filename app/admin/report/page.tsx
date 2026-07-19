@@ -10,15 +10,8 @@ import { usePathname } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 
-type WasteType =
-  | "Plastic"
-  | "Paper"
-  | "Glass"
-  | "Metal"
-  | "Organic"
-  | "E-Waste"
-  | "Hazardous"
-  | "Construction Debris";
+import { type WasteType, WASTE_TYPE_OPTIONS } from "@/lib/wasteTypes";
+
 
 type WasteCollectionRow = {
   date: string; // YYYY-MM-DD
@@ -27,14 +20,18 @@ type WasteCollectionRow = {
   weightKg: number;
 };
 
-type VehicleAssignmentRow = {
+
+type ScheduleRow = {
   date: string; // YYYY-MM-DD
-  tripId: string;
-  driver: string;
+  scheduleId: string;
   collector: string;
-  vehicleType: string;
+  driver: string;
   vehicleNumber: string;
+  region: string;
+  routeId: string;
+  description: string;
 };
+
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -56,16 +53,7 @@ const sidebarItems = [
   { label: "Reports", href: "/admin/report", icon: "📈" },
 ];
 
-const allWasteTypes: WasteType[] = [
-  "Plastic",
-  "Paper",
-  "Glass",
-  "Metal",
-  "Organic",
-  "E-Waste",
-  "Hazardous",
-  "Construction Debris",
-];
+
 
 function toTimestamp(dateStr: string) {
   // Safe parse for YYYY-MM-DD
@@ -105,10 +93,11 @@ function downloadCsv(filename: string, headers: string[], rows: (string | number
 
 export default function AdminReportPage() {
   const pathname = usePathname();
-  const [activeTab, setActiveTab] = useState<"waste" | "vehicle">("waste");
+  const [activeTab, setActiveTab] = useState<"waste" | "schedule">("waste");
 
   const [wasteCollections, setWasteCollections] = useState<WasteCollectionRow[]>([]);
-  const [vehicleAssignments, setVehicleAssignments] = useState<VehicleAssignmentRow[]>([]);
+  const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
+
   const [loading, setLoading] = useState(true);
 
   // Waste filters
@@ -116,12 +105,13 @@ export default function AdminReportPage() {
   const [wToDate, setWToDate] = useState(new Date().toISOString().split('T')[0]);
   const [wasteType, setWasteType] = useState<WasteType | "ALL">("ALL");
 
-  // Vehicle filters
-  const [vFromDate, setVFromDate] = useState(new Date().toISOString().split('T')[0]);
-  const [vToDate, setVToDate] = useState(new Date().toISOString().split('T')[0]);
+  // Schedule filters
+  const [sFromDate, setSFromDate] = useState(new Date().toISOString().split('T')[0]);
+  const [sToDate, setSToDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [wApplied, setWApplied] = useState(false);
-  const [vApplied, setVApplied] = useState(false);
+  const [sApplied, setSApplied] = useState(false);
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -138,19 +128,21 @@ export default function AdminReportPage() {
         });
         setWasteCollections(wData);
 
-        const vSnap = await getDocs(query(collection(db, "schedules"), orderBy("date", "desc")));
-        const vData = vSnap.docs.map((doc) => {
+        const sSnap = await getDocs(query(collection(db, "schedules"), orderBy("date", "desc")));
+        const sData = sSnap.docs.map((doc) => {
           const d = doc.data();
           return {
             date: String(d.date || ""),
-            tripId: doc.id,
-            driver: String(d.driverName || ""),
+            scheduleId: doc.id,
             collector: String(d.collectorName || ""),
-            vehicleType: String(d.vehicleType || ""),
+            driver: String(d.driverName || ""),
             vehicleNumber: String(d.vehicleNo || ""),
-          } as VehicleAssignmentRow;
+            region: String(d.region || ""),
+            routeId: String(d.routeId || ""),
+            description: String(d.description || ""),
+          } as ScheduleRow;
         });
-        setVehicleAssignments(vData);
+        setSchedules(sData);
       } catch (error) {
         console.error("Error fetching report data:", error);
       } finally {
@@ -168,9 +160,10 @@ export default function AdminReportPage() {
     });
   }, [wasteCollections, wFromDate, wToDate, wasteType]);
 
-  const filteredVehicle = useMemo(() => {
-    return vehicleAssignments.filter((row) => isWithinRange(row.date, vFromDate, vToDate));
-  }, [vehicleAssignments, vFromDate, vToDate]);
+  const filteredSchedules = useMemo(() => {
+    return schedules.filter((row) => isWithinRange(row.date, sFromDate, sToDate));
+  }, [schedules, sFromDate, sToDate]);
+
 
   const wasteTotals = useMemo(() => {
     const total = filteredWaste.reduce((sum, r) => sum + r.weightKg, 0);
@@ -183,25 +176,30 @@ export default function AdminReportPage() {
     downloadCsv(`waste-collection-report_${wFromDate}_to_${wToDate}.csv`, headers, rows);
   };
 
-  const doExportVehicle = () => {
+  const doExportSchedule = () => {
     const headers = [
       "Date",
-      "Trip ID",
-      "Driver",
+      "Schedule ID",
       "Collector",
-      "Vehicle Type",
+      "Driver",
+      "Region",
+      "Route ID",
       "Vehicle Number",
+      "Description",
     ];
-    const rows = filteredVehicle.map((r) => [
+    const rows = filteredSchedules.map((r) => [
       r.date,
-      r.tripId,
-      r.driver,
+      r.scheduleId,
       r.collector,
-      r.vehicleType,
+      r.driver,
+      r.region,
+      r.routeId,
       r.vehicleNumber,
+      r.description,
     ]);
-    downloadCsv(`vehicle-assignment-report_${vFromDate}_to_${vToDate}.csv`, headers, rows);
+    downloadCsv(`schedule-report_${sFromDate}_to_${sToDate}.csv`, headers, rows);
   };
+
 
   return (
         <RoleGuard allowedRole="admin">
@@ -322,12 +320,12 @@ export default function AdminReportPage() {
             </button>
             <button
               type="button"
-              className={activeTab === "vehicle" ? "tab tab--active" : "tab"}
-              onClick={() => setActiveTab("vehicle")}
+              className={activeTab === "schedule" ? "tab tab--active" : "tab"}
+              onClick={() => setActiveTab("schedule")}
               role="tab"
-              aria-selected={activeTab === "vehicle"}
+              aria-selected={activeTab === "schedule"}
             >
-              Vehicle Assignment
+              Schedule Report
             </button>
           </div>
 
@@ -344,14 +342,18 @@ export default function AdminReportPage() {
                 </label>
                 <label>
                   <span>Waste type</span>
-                  <select value={wasteType} onChange={(e) => setWasteType(e.target.value as WasteType | "ALL")}>
+                  <select
+                    value={wasteType}
+                    onChange={(e) => setWasteType(e.target.value as WasteType | "ALL")}
+                  >
                     <option value="ALL">All</option>
-                    {allWasteTypes.map((t) => (
+                    {WASTE_TYPE_OPTIONS.map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>
                     ))}
                   </select>
+
                 </label>
 
                 <div className="filter-actions">
@@ -409,29 +411,29 @@ export default function AdminReportPage() {
             </div>
           )}
 
-          {activeTab === "vehicle" && (
-            <div className="report-body" role="tabpanel" aria-label="Vehicle assignment report">
+          {activeTab === "schedule" && (
+            <div className="report-body" role="tabpanel" aria-label="Schedule report">
               <div className="filters">
                 <label>
                   <span>Date from</span>
-                  <input type="date" value={vFromDate} onChange={(e) => setVFromDate(e.target.value)} />
+                  <input type="date" value={sFromDate} onChange={(e) => setSFromDate(e.target.value)} />
                 </label>
                 <label>
                   <span>Date to</span>
-                  <input type="date" value={vToDate} onChange={(e) => setVToDate(e.target.value)} />
+                  <input type="date" value={sToDate} onChange={(e) => setSToDate(e.target.value)} />
                 </label>
 
                 <div className="filter-actions">
-                  <button className="primary-btn" onClick={() => setVApplied(true)} type="button">
+                  <button className="primary-btn" onClick={() => setSApplied(true)} type="button">
                     Apply
                   </button>
                   <button
                     className="secondary-btn"
-                    onClick={doExportVehicle}
+                    onClick={doExportSchedule}
                     type="button"
-                    disabled={!vApplied || filteredVehicle.length === 0}
-                    aria-disabled={!vApplied || filteredVehicle.length === 0}
-                    title={!vApplied ? "Apply filters first" : "Export CSV"}
+                    disabled={!sApplied || filteredSchedules.length === 0}
+                    aria-disabled={!sApplied || filteredSchedules.length === 0}
+                    title={!sApplied ? "Apply filters first" : "Export CSV"}
                   >
                     Export CSV
                   </button>
@@ -439,40 +441,44 @@ export default function AdminReportPage() {
               </div>
 
               <div className="report-summary">
-                <div className="summary-pill">Rows: {vApplied ? filteredVehicle.length : 0}</div>
-                <div className="summary-pill">Date range: {vApplied ? `${vFromDate} → ${vToDate}` : "—"}</div>
+                <div className="summary-pill">Rows: {sApplied ? filteredSchedules.length : 0}</div>
+                <div className="summary-pill">Date range: {sApplied ? `${sFromDate} → ${sToDate}` : "—"}</div>
               </div>
 
               <div className="table table--wide">
                 <div className="table-row table-row--header table-row--grid">
                   <span>DATE</span>
-                  <span>TRIP ID</span>
+                  <span>SCHEDULE ID</span>
                   <span>DRIVER</span>
                   <span>COLLECTOR</span>
-                  <span>VEHICLE TYPE</span>
-                  <span>VEHICLE NUMBER</span>
+                  <span>ROUTE ID</span>
+                  <span>VEHICLE NO</span>
                 </div>
 
-                {(vApplied ? filteredVehicle : []).map((r) => (
-                  <div className="table-row table-row--grid" key={`${r.tripId}-${r.date}-${r.vehicleNumber}`}>
+                {(sApplied ? filteredSchedules : []).map((r) => (
+                  <div
+                    className="table-row table-row--grid"
+                    key={`${r.scheduleId}-${r.date}-${r.vehicleNumber}`}
+                  >
                     <span>{r.date}</span>
-                    <span>{r.tripId}</span>
+                    <span>{r.scheduleId}</span>
                     <span>{r.driver}</span>
                     <span>{r.collector}</span>
-                    <span>{r.vehicleType}</span>
+                    <span>{r.routeId}</span>
                     <span>{r.vehicleNumber}</span>
                   </div>
                 ))}
 
-                {vApplied && filteredVehicle.length === 0 && (
+                {sApplied && filteredSchedules.length === 0 && (
                   <div className="empty-state">
-                    <strong>No vehicle assignments found</strong>
+                    <strong>No schedules found</strong>
                     <span>Adjust the date range.</span>
                   </div>
                 )}
               </div>
             </div>
           )}
+
         </section>
       </main>
 
