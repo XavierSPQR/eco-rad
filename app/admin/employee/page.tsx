@@ -22,6 +22,7 @@ interface Employee {
   employeeID: string;
   name: string; // Mapped from fullName
   role: string;
+  email: string;
   contact: string; // Mapped from phone
   createdAt?: Timestamp;
 }
@@ -59,6 +60,7 @@ export default function AdminEmployeePage() {
     employeeID: "",
     name: "",
     role: "collector",
+    email: "",
     contact: "",
     nic: ""
   });
@@ -77,6 +79,7 @@ export default function AdminEmployeePage() {
             employeeID: data.employeeID || "",
             name: data.fullName || "",
             role: data.role || "",
+            email: data.email || "",
             contact: data.phone || "",
             createdAt: data.createdAt,
           };
@@ -96,7 +99,7 @@ export default function AdminEmployeePage() {
 
   const handleAddClick = () => {
     setEditingId(null);
-    setFormData({ employeeID: "", name: "", role: "collector", contact: "", nic: "" });
+    setFormData({ employeeID: "", name: "", role: "collector", email: "", contact: "", nic: "" });
     setIsFormOpen(true);
   };
 
@@ -106,6 +109,7 @@ export default function AdminEmployeePage() {
       employeeID: employee.employeeID,
       name: employee.name,
       role: employee.role,
+      email: employee.email,
       contact: employee.contact,
       nic: "",
     });
@@ -124,6 +128,7 @@ export default function AdminEmployeePage() {
       const firestoreData = {
         employeeID: nextEmployeeID,
         fullName: formData.name ?? "",
+        email: formData.email ?? "",
         nic: formData.nic ?? "",
         role: formData.role ?? "collector",
         phone: formData.contact ?? "",
@@ -307,6 +312,16 @@ export default function AdminEmployeePage() {
                 </div>
 
                 <div className="form-row">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="name@example.com"
+                  />
+                </div>
+
+                <div className="form-row">
                   <label>Role</label>
                   <select
                     value={formData.role}
@@ -338,7 +353,7 @@ export default function AdminEmployeePage() {
               <div className="employee-row employee-row--header">
                 <span>EID</span>
                 <span>NAME</span>
-
+                <span>EMAIL</span>
                 <span>ROLE</span>
                 <span>CONTACT</span>
                 <span>ACTION</span>
@@ -358,7 +373,7 @@ export default function AdminEmployeePage() {
                     <span className="employee-cell">
                       <strong>{employee.name}</strong>
                     </span>
-
+                    <span className="employee-cell">{employee.email || "-"}</span>
                     <span className="employee-cell" style={{ textTransform: 'capitalize' }}>{employee.role}</span>
                     <span className="employee-cell">{employee.contact}</span>
                     <span className="action-buttons">
@@ -597,7 +612,7 @@ export default function AdminEmployeePage() {
 
           .employee-row {
             display: grid;
-            grid-template-columns: 0.8fr 1.8fr 1fr 1.15fr 0.8fr;
+            grid-template-columns: 0.8fr 1.6fr 1.7fr 1fr 1.15fr 0.8fr;
             gap: 12px;
             align-items: center;
             min-width: 100%;

@@ -1,5 +1,7 @@
 import {
   createUserWithEmailAndPassword,
+  browserSessionPersistence,
+  setPersistence,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
@@ -30,11 +32,26 @@ export type UserProfile = {
   badgeProgress?: number;
 };
 
+let persistencePromise: Promise<void> | null = null;
+
+async function ensureTabScopedPersistence() {
+  if (!persistencePromise) {
+    persistencePromise = setPersistence(auth, browserSessionPersistence).catch((error) => {
+      persistencePromise = null;
+      throw error;
+    });
+  }
+
+  return persistencePromise;
+}
+
 export async function signUpResident(
   email: string,
   password: string,
   profile: Omit<UserProfile, "uid" | "role" | "points" | "residences">
 ) {
+  await ensureTabScopedPersistence();
+
   // Step 1: Create the Firebase Auth user
   let user: User;
   try {
@@ -87,6 +104,8 @@ export async function signUpResident(
 }
 
 export async function signIn(email: string, password: string) {
+  await ensureTabScopedPersistence();
+
   let user: User;
   try {
     const credential = await signInWithEmailAndPassword(auth, email, password);
