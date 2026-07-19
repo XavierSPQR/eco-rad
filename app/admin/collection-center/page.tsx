@@ -19,7 +19,16 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { calculatePointsEarned, migrateLegacyWasteTypes, normalizeWasteType, WASTE_TYPE_OPTIONS, type WasteType } from "@/lib/wasteTypes";
+import {
+  calculatePointsEarnedWithRates,
+  DEFAULT_WASTE_POINT_RATE_CONFIG,
+  getWastePointRateConfig,
+  migrateLegacyWasteTypes,
+  normalizeWasteType,
+  WASTE_TYPE_OPTIONS,
+  type WastePointRateConfig,
+  type WasteType,
+} from "@/lib/wasteTypes";
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -111,6 +120,7 @@ export default function AdminCollectionCenterPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [formData, setFormData] = useState<ResidentCollectionFormState>(emptyForm());
+  const [wastePointRates, setWastePointRates] = useState<WastePointRateConfig>(DEFAULT_WASTE_POINT_RATE_CONFIG);
 
   useEffect(() => {
     const loadResidentOptions = async () => {
@@ -181,6 +191,9 @@ export default function AdminCollectionCenterPage() {
     void migrateLegacyWasteTypes();
     void loadResidentOptions();
     void backfillMissingResidentData();
+    void getWastePointRateConfig().then(setWastePointRates).catch((error) => {
+      console.error("Failed to load point settings:", error);
+    });
 
     return undefined;
   }, []);
@@ -289,7 +302,7 @@ export default function AdminCollectionCenterPage() {
       setFormData((current) => ({ ...current, residentName: residentMatch.fullName }));
     }
 
-    const pointsEarned = calculatePointsEarned(weightValue, wasteType);
+    const pointsEarned = calculatePointsEarnedWithRates(weightValue, wasteType, wastePointRates);
 
     try {
       const residentMatches = await getDocs(firestoreQuery(collection(db, "users"), where("residentID", "==", residentId)));

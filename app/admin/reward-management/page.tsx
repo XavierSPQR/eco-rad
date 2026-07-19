@@ -10,11 +10,32 @@ import {
   addDoc,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   query,
   orderBy,
   serverTimestamp,
+  setDoc,
 } from "firebase/firestore";
+import {
+  DEFAULT_WASTE_POINT_RATE_CONFIG,
+  WASTE_POINT_SETTINGS_COLLECTION,
+  WASTE_POINT_SETTINGS_DOC,
+  type WastePointRateConfig,
+} from "@/lib/wasteTypes";
+
+type BadgeLevel = {
+  target: number;
+  note: string;
+};
+
+type BadgeRow = {
+  id: string;
+  title: string;
+  type: string;
+  variant: string;
+  levels: BadgeLevel[];
+};
 
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -39,28 +60,67 @@ const sidebarItems = [
 
 export default function AdminBadgeManagementPage() {
   const pathname = usePathname();
-  const [badges, setBadges] = useState<any[]>([]);
+  const [badges, setBadges] = useState<BadgeRow[]>([]);
+  const [activeTab, setActiveTab] = useState<"badges" | "points">("badges");
   const [loading, setLoading] = useState(true);
+  const [loadingPoints, setLoadingPoints] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingPoints, setIsSavingPoints] = useState(false);
 
   // Form state
   const [title, setTitle] = useState("");
   const [type, setType] = useState("points");
   const [variant, setVariant] = useState("complete");
   const [levels, setLevels] = useState([{ target: 0, note: "" }]);
+  const [pointRatesKg, setPointRatesKg] = useState<WastePointRateConfig>({
+    Organic: DEFAULT_WASTE_POINT_RATE_CONFIG.Organic * 1000,
+    "E-waste": DEFAULT_WASTE_POINT_RATE_CONFIG["E-waste"] * 1000,
+    Recycle: DEFAULT_WASTE_POINT_RATE_CONFIG.Recycle * 1000,
+  });
+  const perGramRates = {
+    Organic: pointRatesKg.Organic / 1000,
+    "E-waste": pointRatesKg["E-waste"] / 1000,
+    Recycle: pointRatesKg.Recycle / 1000,
+  };
 
   useEffect(() => {
     const q = query(collection(db, "badges"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data(),
-      }));
+        ...(doc.data() as Omit<BadgeRow, "id">),
+      })) as BadgeRow[];
       setBadges(data);
       setLoading(false);
     });
 
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const loadPointRates = async () => {
+      const ref = doc(db, WASTE_POINT_SETTINGS_COLLECTION, WASTE_POINT_SETTINGS_DOC);
+      const snapshot = await getDoc(ref);
+      if (!snapshot.exists()) {
+        setPointRatesKg({
+          Organic: DEFAULT_WASTE_POINT_RATE_CONFIG.Organic * 1000,
+          "E-waste": DEFAULT_WASTE_POINT_RATE_CONFIG["E-waste"] * 1000,
+          Recycle: DEFAULT_WASTE_POINT_RATE_CONFIG.Recycle * 1000,
+        });
+        setLoadingPoints(false);
+        return;
+      }
+
+      const data = snapshot.data();
+      setPointRatesKg({
+        Organic: Number(data?.Organic ?? DEFAULT_WASTE_POINT_RATE_CONFIG.Organic * 1000),
+        "E-waste": Number(data?.["E-waste"] ?? DEFAULT_WASTE_POINT_RATE_CONFIG["E-waste"] * 1000),
+        Recycle: Number(data?.Recycle ?? DEFAULT_WASTE_POINT_RATE_CONFIG.Recycle * 1000),
+      });
+      setLoadingPoints(false);
+    };
+
+    void loadPointRates();
   }, []);
 
   const addLevel = () => {
@@ -72,7 +132,7 @@ export default function AdminBadgeManagementPage() {
     setLevels(newLevels);
   };
 
-  const updateLevel = (index: number, field: string, value: any) => {
+  const updateLevel = (index: number, field: keyof BadgeLevel, value: string | number) => {
     const newLevels = [...levels];
     newLevels[index] = { ...newLevels[index], [field]: value };
     setLevels(newLevels);
@@ -114,6 +174,25 @@ export default function AdminBadgeManagementPage() {
     } catch (error) {
       console.error("Error deleting badge:", error);
       alert("Failed to delete badge.");
+    }
+  };
+
+  const handleSavePointRates = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingPoints(true);
+    try {
+      const payload = {
+        Organic: Number(pointRatesKg.Organic) / 1000,
+        "E-waste": Number(pointRatesKg["E-waste"]) / 1000,
+        Recycle: Number(pointRatesKg.Recycle) / 1000,
+        updatedAt: serverTimestamp(),
+      };
+      await setDoc(doc(db, WASTE_POINT_SETTINGS_COLLECTION, WASTE_POINT_SETTINGS_DOC), payload, { merge: true });
+    } catch (error) {
+      console.error("Error saving point rates:", error);
+      alert("Failed to save point settings.");
+    } finally {
+      setIsSavingPoints(false);
     }
   };
 
@@ -171,10 +250,17 @@ export default function AdminBadgeManagementPage() {
           <section className="admin-header-card">
             <div>
               <span className="admin-chip">REWARD MANAGEMENT</span>
-              <h1>Badge Management</h1>
-              <p>Create and manage dynamic badges for residents.</p>
+              <h1>Reward Management</h1>
+              <p>Manage resident badges and waste point values from one place.</p>
             </div>
 
+            <div className="tab-switcher" role="tablist" aria-label="Reward management sections">
+              <button type="button" className={activeTab === "badges" ? "tab-button active" : "tab-button"} onClick={() => setActiveTab("badges")}>Badge Management</button>
+              <button type="button" className={activeTab === "points" ? "tab-button active" : "tab-button"} onClick={() => setActiveTab("points")}>Points Management</button>
+            </div>
+
+            {activeTab === "badges" && (
+            <>
             <div style={{ marginTop: 24 }}>
               <form onSubmit={handleAddBadge} className="badge-form">
                 <div className="form-grid">
@@ -284,7 +370,7 @@ export default function AdminBadgeManagementPage() {
                         </button>
                       </div>
                       <div className="badge-mgmt-levels">
-                        {badge.levels.map((l: any, i: number) => (
+                        {badge.levels.map((l: BadgeLevel, i: number) => (
                           <div key={i} className="mgmt-level-item">
                             L{i + 1}: {l.target} — {l.note}
                           </div>
@@ -295,6 +381,42 @@ export default function AdminBadgeManagementPage() {
                 )}
               </div>
             </div>
+            </>
+            )}
+
+            {activeTab === "points" && (
+              <div style={{ marginTop: 24 }}>
+                <form onSubmit={handleSavePointRates} className="badge-form">
+                  <div className="points-help">
+                    Set the value for 1 kg of each waste type. The system stores the equivalent per-gram rate so partial weights like 1.5 kg or 500 g earn correctly.
+                  </div>
+                  <div className="form-grid">
+                    {(["Organic", "E-waste", "Recycle"] as const).map((wasteType) => (
+                      <div className="form-group" key={wasteType}>
+                        <label>{wasteType} points per 1 kg</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={pointRatesKg[wasteType]}
+                          onChange={(e) => setPointRatesKg((current) => ({ ...current, [wasteType]: Number(e.target.value) }))}
+                          className="reward-input"
+                          required
+                        />
+                        <small className="rate-preview">
+                          Stored per gram: {perGramRates[wasteType].toFixed(6)} pts/g
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 24 }}>
+                    <button type="submit" className="admin-primary" disabled={isSavingPoints || loadingPoints}>
+                      {isSavingPoints ? "Saving..." : "Save Point Settings"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
           </section>
         </main>
 
@@ -356,10 +478,15 @@ export default function AdminBadgeManagementPage() {
           }
 
           .badge-form { background: white; padding: 24px; border-radius: 18px; margin-top: 20px; }
+          .tab-switcher { display: inline-flex; gap: 8px; margin-top: 20px; background: rgba(255,255,255,0.75); padding: 6px; border-radius: 16px; }
+          .tab-button { border: none; background: transparent; padding: 10px 16px; border-radius: 12px; font-weight: 700; color: #45604b; cursor: pointer; }
+          .tab-button.active { background: #166529; color: white; }
           .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
           .form-group { display: flex; flex-direction: column; gap: 8px; }
           .form-group label { font-size: 0.85rem; font-weight: 700; color: #17350f; }
           .reward-input { padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; outline: none; }
+          .points-help { background: #f0fbf1; border: 1px solid #d8efdc; color: #24572a; padding: 14px 16px; border-radius: 14px; margin-bottom: 18px; }
+          .rate-preview { color: #6b7280; font-size: 0.8rem; }
 
           .levels-section { margin-top: 24px; border-top: 1px solid #f1f5f9; padding-top: 16px; }
           .level-row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 12px; }

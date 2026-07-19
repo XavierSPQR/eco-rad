@@ -2,7 +2,9 @@ import {
   collection,
   doc,
   getDocs,
+  getDoc,
   type Firestore,
+  onSnapshot,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -26,6 +28,17 @@ const POINTS_RATE_BY_WASTE_TYPE: Record<WasteType, number> = {
   Recycle: 0.75,
 };
 
+export const WASTE_POINT_SETTINGS_DOC = "current";
+export const WASTE_POINT_SETTINGS_COLLECTION = "wastePointSettings";
+
+export type WastePointRateConfig = Record<WasteType, number>;
+
+export const DEFAULT_WASTE_POINT_RATE_CONFIG: WastePointRateConfig = {
+  Organic: POINTS_RATE_BY_WASTE_TYPE.Organic / 1000,
+  "E-waste": POINTS_RATE_BY_WASTE_TYPE["E-waste"] / 1000,
+  Recycle: POINTS_RATE_BY_WASTE_TYPE.Recycle / 1000,
+};
+
 export function normalizeWasteType(value: string | null | undefined): WasteType {
   const normalizedValue = (value || "").toString().trim().toLowerCase();
 
@@ -40,9 +53,53 @@ export function normalizeWasteType(value: string | null | undefined): WasteType 
 }
 
 export function calculatePointsEarned(weight: number, wasteType: string | null | undefined): number {
+  return calculatePointsEarnedWithRates(weight, wasteType, DEFAULT_WASTE_POINT_RATE_CONFIG);
+}
+
+export function calculatePointsEarnedWithRates(
+  weight: number,
+  wasteType: string | null | undefined,
+  rates: WastePointRateConfig,
+): number {
   const normalizedType = normalizeWasteType(wasteType);
   const parsedWeight = Number.isFinite(weight) ? weight : 0;
-  return Number((parsedWeight * POINTS_RATE_BY_WASTE_TYPE[normalizedType]).toFixed(2));
+  return Number((parsedWeight * (rates[normalizedType] ?? DEFAULT_WASTE_POINT_RATE_CONFIG[normalizedType])).toFixed(4));
+}
+
+export function normalizeWastePointRateConfig(input: Record<string, unknown> | null | undefined): WastePointRateConfig {
+  return {
+    Organic: Number(input?.Organic ?? DEFAULT_WASTE_POINT_RATE_CONFIG.Organic),
+    "E-waste": Number(input?.["E-waste"] ?? DEFAULT_WASTE_POINT_RATE_CONFIG["E-waste"]),
+    Recycle: Number(input?.Recycle ?? DEFAULT_WASTE_POINT_RATE_CONFIG.Recycle),
+  };
+}
+
+export async function getWastePointRateConfig(firestoreDb: Firestore = db): Promise<WastePointRateConfig> {
+  const snapshot = await getDoc(doc(firestoreDb, WASTE_POINT_SETTINGS_COLLECTION, WASTE_POINT_SETTINGS_DOC));
+  if (!snapshot.exists()) {
+    return DEFAULT_WASTE_POINT_RATE_CONFIG;
+  }
+
+  return normalizeWastePointRateConfig(snapshot.data() as Record<string, unknown>);
+}
+
+export function watchWastePointRateConfig(
+  firestoreDb: Firestore,
+  onChange: (rates: WastePointRateConfig) => void,
+  onError?: (error: unknown) => void,
+) {
+  return onSnapshot(
+    doc(firestoreDb, WASTE_POINT_SETTINGS_COLLECTION, WASTE_POINT_SETTINGS_DOC),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onChange(DEFAULT_WASTE_POINT_RATE_CONFIG);
+        return;
+      }
+
+      onChange(normalizeWastePointRateConfig(snapshot.data() as Record<string, unknown>));
+    },
+    onError,
+  );
 }
 
 export function formatCollectionDate(value: unknown): string {
