@@ -416,7 +416,6 @@ export default function AdminCollectionCenterPage() {
 
           <section className="admin-header-card">
             <div>
-              <span className="admin-chip">COLLECTION CENTERS</span>
               <h1>
                 Collection Center <span className="highlight">🏬</span>
               </h1>
