@@ -344,7 +344,7 @@ export default function ResidentRewardsPage() {
           <div className={styles.balancePill}>
             <span className={styles.balanceIcon}>🏦</span>
             <span>Available Balance:</span>
-            <strong>{availablePoints} pts</strong>
+            <strong>{parseFloat(availablePoints.toFixed(2))} pts</strong>
           </div>
         </div>
 
