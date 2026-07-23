@@ -5,7 +5,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, getDocs, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, updateDoc, doc, serverTimestamp, onSnapshot, deleteDoc, setDoc } from "firebase/firestore";
 import { extractPrefixedNumber, formatPrefixedNumber } from "@/lib/idFormat";
 
 const sidebarItems = [
@@ -42,6 +42,23 @@ type RouteFormState = {
   newPoint: string;
 };
 
+function findFirstGapRouteId(existingRouteIds: string[]): string {
+  const numbers = existingRouteIds
+    .map(id => extractPrefixedNumber(id, "RT"))
+    .filter((num): num is number => num !== null)
+    .sort((a, b) => a - b);
+
+  let candidate = 1;
+  for (const num of numbers) {
+    if (num === candidate) {
+      candidate++;
+    } else if (num > candidate) {
+      break;
+    }
+  }
+  return formatPrefixedNumber("RT", candidate);
+}
+
 const createEmptyForm = (): RouteFormState => ({
   routeId: "",
   region: "",
@@ -59,9 +76,7 @@ export default function AdminRouteManagementPage() {
   const [formData, setFormData] = useState<RouteFormState>(createEmptyForm());
 
   useEffect(() => {
-    const loadRoutes = async () => {
-      const snap = await getDocs(collection(db, "routes"));
-      if (snap.empty) return;
+    const unsubscribe = onSnapshot(collection(db, "routes"), (snap) => {
       setRoutes(
         snap.docs.map((routeDoc) => {
           const data = routeDoc.data();
@@ -72,21 +87,31 @@ export default function AdminRouteManagementPage() {
           };
         })
       );
-    };
+    });
 
-    void loadRoutes();
+    return () => unsubscribe();
   }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return routes;
 
-    return routes.filter((route) => [route.id, route.region].some((value) => value.toLowerCase().includes(q)));
+    return routes.filter((route) =>
+      route.id.toLowerCase().includes(q) ||
+      route.region.toLowerCase().includes(q)
+    );
   }, [query, routes]);
 
   const openAddModal = () => {
     setEditingRouteId(null);
-    setFormData(createEmptyForm());
+    const existingRouteIds = routes.map((r) => r.id);
+    const nextRouteId = findFirstGapRouteId(existingRouteIds);
+    setFormData({
+      routeId: nextRouteId,
+      region: "",
+      points: [],
+      newPoint: "",
+    });
     setIsModalOpen(true);
   };
 
@@ -109,6 +134,22 @@ export default function AdminRouteManagementPage() {
 
   const toggleRoute = (routeId: string) => {
     setExpandedRouteId((current) => (current === routeId ? null : routeId));
+  };
+
+  const handleDeleteRoute = async (routeId: string) => {
+    if (!confirm(`Are you sure you want to delete route ${routeId}?`)) {
+      return;
+    }
+
+    try {
+      const snap = await getDocs(collection(db, "routes"));
+      const docToDelete = snap.docs.find((d) => (d.data().routeId || d.id) === routeId);
+      if (docToDelete) {
+        await deleteDoc(doc(db, "routes", docToDelete.id));
+      }
+    } catch (err) {
+      console.error("Error deleting route:", err);
+    }
   };
 
   const handleFormFieldChange = (field: keyof RouteFormState, value: string) => {
@@ -144,22 +185,28 @@ export default function AdminRouteManagementPage() {
       return;
     }
 
-    const existingIds = routes.map((route) => extractPrefixedNumber(route.id, "RT")).filter((value): value is number => typeof value === "number");
-    const generatedId = formatPrefixedNumber("RT", (existingIds.length ? Math.max(...existingIds) : 0) + 1);
-    const finalRouteId = routeId || generatedId;
-    const nextRoute: RouteRow = { id: finalRouteId, region, points };
-    const routeRecord = { routeId: finalRouteId, region, points, updatedAt: serverTimestamp() };
+    const routeRecord = { routeId, region, points, updatedAt: serverTimestamp() };
 
-    if (editingRouteId) {
-      setRoutes((current) => current.map((route) => (route.id === editingRouteId ? nextRoute : route)));
-      const existingDocs = await getDocs(collection(db, "routes"));
-      const existingDoc = existingDocs.docs.find((d) => (d.data().routeId || d.id) === editingRouteId);
-      if (existingDoc) {
-        await updateDoc(doc(db, "routes", existingDoc.id), routeRecord);
+    try {
+      if (editingRouteId) {
+        const existingDocs = await getDocs(collection(db, "routes"));
+        const existingDoc = existingDocs.docs.find((d) => (d.data().routeId || d.id) === editingRouteId);
+        if (existingDoc) {
+          await updateDoc(doc(db, "routes", existingDoc.id), routeRecord);
+        } else {
+          // Fallback if not found by field
+          await setDoc(doc(db, "routes", routeId), routeRecord, { merge: true });
+        }
+      } else {
+        // For new route, save details to relevant firebase collection named routes.
+        // We set document ID to routeId to keep it uniform and clean.
+        await setDoc(doc(db, "routes", routeId), {
+          ...routeRecord,
+          createdAt: serverTimestamp(),
+        });
       }
-    } else {
-      setRoutes((current) => [nextRoute, ...current]);
-      await addDoc(collection(db, "routes"), { ...routeRecord, routeId: finalRouteId, createdAt: serverTimestamp() });
+    } catch (err) {
+      console.error("Error saving route:", err);
     }
 
     closeModal();
@@ -322,9 +369,14 @@ export default function AdminRouteManagementPage() {
                             {isExpanded ? "▾" : "▸"}
                           </button>
                         </div>
-                        <button type="button" className="edit-button" onClick={() => openEditModal(route)}>
-                          ✎ Edit
-                        </button>
+                        <div className="action-buttons-cell">
+                          <button type="button" className="edit-button" onClick={() => openEditModal(route)}>
+                            ✎ Edit
+                          </button>
+                          <button type="button" className="delete-button" onClick={() => handleDeleteRoute(route.id)}>
+                            🗑 Delete
+                          </button>
+                        </div>
                       </div>
 
                       {isExpanded ? (
@@ -362,8 +414,9 @@ export default function AdminRouteManagementPage() {
                   <span>Route ID</span>
                   <input
                     value={formData.routeId}
-                    onChange={(event) => handleFormFieldChange("routeId", event.target.value)}
-                    placeholder="Enter route ID"
+                    readOnly
+                    placeholder="Auto-generates as RT001"
+                    style={{ backgroundColor: "#eef2f3", cursor: "not-allowed" }}
                   />
                 </label>
 
@@ -701,8 +754,15 @@ export default function AdminRouteManagementPage() {
             gap: 10px;
           }
 
+          .action-buttons-cell {
+            display: flex;
+            gap: 8px;
+            justify-self: end;
+          }
+
           .chevron-button,
           .edit-button,
+          .delete-button,
           .mini-button,
           .modal-secondary,
           .point-remove {
@@ -723,11 +783,18 @@ export default function AdminRouteManagementPage() {
           }
 
           .edit-button {
-            justify-self: end;
             border-radius: 999px;
             padding: 8px 12px;
             background: #e8f5eb;
             color: #166529;
+            font-weight: 700;
+          }
+
+          .delete-button {
+            border-radius: 999px;
+            padding: 8px 12px;
+            background: #fdecea;
+            color: #b91c1c;
             font-weight: 700;
           }
 

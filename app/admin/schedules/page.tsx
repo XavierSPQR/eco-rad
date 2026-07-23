@@ -221,10 +221,12 @@ export default function AdminSchedulesPage() {
     setIsModalOpen(true);
   };
 
-  const closeModal = () => {
+  const closeModal = (keepMessage = false) => {
     setIsModalOpen(false);
     setEditingScheduleId(null);
-    setMessage({ text: "", type: "" });
+    if (!keepMessage) {
+      setMessage({ text: "", type: "" });
+    }
     setFormData(createEmptyForm());
   };
 
@@ -291,8 +293,67 @@ export default function AdminSchedulesPage() {
         });
       }
 
-      setMessage({ text: editingScheduleId ? "Schedule updated successfully." : "Schedule created successfully.", type: "success" });
-      closeModal();
+      // Fetch residents associated with the routeID
+      const residentsQuery = query(
+        collection(db, "users"),
+        where("role", "==", "resident"),
+        where("routeID", "==", formData.routeId)
+      );
+      const residentsSnapshot = await getDocs(residentsQuery);
+      const residents = residentsSnapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+
+      const notificationPromises: Promise<any>[] = [];
+
+      // 1. Send notification to the collector
+      const collectorDesc = `You have been assigned to route ${formData.routeId} on ${formData.date}. Description: ${formData.description || "No description provided"}`;
+      notificationPromises.push(
+        addDoc(collection(db, "notifications"), {
+          userId: formData.collectorId,
+          title: "New Schedule Assigned",
+          description: collectorDesc,
+          type: "truck",
+          read: false,
+          createdAt: serverTimestamp(),
+        })
+      );
+
+      // 2. Send notification to each resident associated with the route
+      const residentDesc = `A pickup has been scheduled for your route ${formData.routeId} on ${formData.date}`;
+      residents.forEach((resident) => {
+        notificationPromises.push(
+          addDoc(collection(db, "notifications"), {
+            userId: resident.id,
+            title: "Collection Scheduled",
+            description: residentDesc,
+            type: "truck",
+            read: false,
+            createdAt: serverTimestamp(),
+          })
+        );
+      });
+
+      await Promise.all(notificationPromises);
+
+      let successMessage = editingScheduleId
+        ? "Schedule updated successfully."
+        : "Schedule created successfully.";
+      let isWarning = false;
+
+      if (residents.length === 0) {
+        successMessage += " Warning: No residents are associated with this route ID.";
+        isWarning = true;
+        console.warn(`No residents found for route ID: ${formData.routeId}`);
+      }
+
+      setMessage({
+        text: successMessage,
+        type: isWarning ? "error" : "success",
+      });
+
+      closeModal(true);
     } catch (error) {
       const firebaseError = error as { code?: string; message?: string };
       console.error("Error saving schedule:", firebaseError?.code, firebaseError?.message, error);
@@ -426,14 +487,14 @@ export default function AdminSchedulesPage() {
         </main>
 
         {isModalOpen ? (
-          <div className="modal-backdrop" role="presentation" onClick={closeModal}>
+          <div className="modal-backdrop" role="presentation" onClick={() => closeModal()}>
             <div className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
               <div className="modal-header">
                 <div>
                   <p className="modal-label">Schedule</p>
                   <h3>{editingScheduleId ? "Edit schedule" : "Add schedule"}</h3>
                 </div>
-                <button type="button" className="modal-close" onClick={closeModal}>
+                <button type="button" className="modal-close" onClick={() => closeModal()}>
                   ×
                 </button>
               </div>
@@ -532,7 +593,7 @@ export default function AdminSchedulesPage() {
                 </label>
 
                 <div className="modal-actions">
-                  <button type="button" className="modal-secondary" onClick={closeModal}>
+                  <button type="button" className="modal-secondary" onClick={() => closeModal()}>
                     Cancel
                   </button>
                   <button type="submit" className="modal-primary" disabled={isSubmitting || loading}>

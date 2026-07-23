@@ -14,6 +14,7 @@ import {
   Timestamp,
   query,
   where,
+  deleteField,
 } from "firebase/firestore";
 import { extractPrefixedNumber, formatPrefixedNumber } from "@/lib/idFormat";
 
@@ -25,7 +26,39 @@ interface Employee {
   email: string;
   contact: string; // Mapped from phone
   createdAt?: Timestamp;
+  collectorId?: string;
 }
+
+function findFirstGapEID(existingEIDs: string[]): string {
+  const numbers = existingEIDs
+    .map(id => extractPrefixedNumber(id, "E"))
+    .filter((num): num is number => num !== null)
+    .sort((a, b) => a - b);
+
+  let candidate = 1;
+  for (const num of numbers) {
+    if (num === candidate) {
+      candidate++;
+    } else if (num > candidate) {
+      break;
+    }
+  }
+  return formatPrefixedNumber("E", candidate);
+}
+
+const calculateNextEID = async (): Promise<string> => {
+  try {
+    const q = query(collection(db, "users"), where("role", "in", ["admin", "collector", "driver"]));
+    const querySnapshot = await getDocs(q);
+    const existingEIDs = querySnapshot.docs
+      .map(doc => doc.data().employeeID)
+      .filter((id): id is string => typeof id === "string" && id.startsWith("E"));
+    return findFirstGapEID(existingEIDs);
+  } catch (err) {
+    console.error("Error calculating next EID:", err);
+    return "E001"; // Fallback
+  }
+};
 
 
 const sidebarItems = [
@@ -56,13 +89,15 @@ export default function AdminEmployeePage() {
   const [error, setError] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [collectors, setCollectors] = useState<{ id: string; name: string }[]>([]);
   const [formData, setFormData] = useState({
     employeeID: "",
     name: "",
     role: "collector",
     email: "",
     contact: "",
-    nic: ""
+    nic: "",
+    collectorId: ""
   });
 
 
@@ -81,6 +116,7 @@ export default function AdminEmployeePage() {
             role: data.role || "",
             email: data.email || "",
             contact: data.phone || "",
+            collectorId: data.collectorId || "",
             createdAt: data.createdAt,
           };
         }) as Employee[];
@@ -94,13 +130,45 @@ export default function AdminEmployeePage() {
       }
     };
 
+    const fetchCollectors = async () => {
+      try {
+        const q = query(collection(db, "users"), where("role", "==", "collector"));
+        const snapshot = await getDocs(q);
+        const collectorList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          name: doc.data().fullName || "Unknown Collector",
+        }));
+        setCollectors(collectorList);
+      } catch (err) {
+        console.error("Error fetching collectors:", err);
+      }
+    };
+
     fetchEmployees();
+    fetchCollectors();
   }, []);
 
-  const handleAddClick = () => {
+  const handleAddClick = async () => {
     setEditingId(null);
-    setFormData({ employeeID: "", name: "", role: "collector", email: "", contact: "", nic: "" });
-    setIsFormOpen(true);
+    setLoading(true);
+    try {
+      const nextEID = await calculateNextEID();
+      setFormData({
+        employeeID: nextEID,
+        name: "",
+        role: "collector",
+        email: "",
+        contact: "",
+        nic: "",
+        collectorId: ""
+      });
+      setIsFormOpen(true);
+    } catch (err) {
+      console.error("Error in handleAddClick:", err);
+      setError("Failed to generate Employee ID. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEditClick = (employee: Employee) => {
@@ -112,20 +180,29 @@ export default function AdminEmployeePage() {
       email: employee.email,
       contact: employee.contact,
       nic: "",
+      collectorId: employee.collectorId || "",
     });
     setIsFormOpen(true);
   };
 
   const handleSaveEmployee = async () => {
-    if (!formData.name.trim()) return;
+    if (!formData.name.trim()) {
+      setError("Full Name is required.");
+      return;
+    }
 
+    if (formData.role === "driver" && !formData.collectorId) {
+      setError("Every Driver must have an associated collector.");
+      return;
+    }
 
     try {
       const existingIds = employeeRows
         .map((employee) => extractPrefixedNumber(employee.employeeID, "E"))
         .filter((value): value is number => typeof value === "number");
       const nextEmployeeID = formData.employeeID.trim() || formatPrefixedNumber("E", (existingIds.length ? Math.max(...existingIds) : 0) + 1);
-      const firestoreData = {
+
+      const firestoreData: any = {
         employeeID: nextEmployeeID,
         fullName: formData.name ?? "",
         email: formData.email ?? "",
@@ -135,12 +212,25 @@ export default function AdminEmployeePage() {
         updatedAt: serverTimestamp(),
       };
 
+      if (formData.role === "driver") {
+        firestoreData.collectorId = formData.collectorId;
+      } else {
+        firestoreData.collectorId = deleteField();
+      }
+
       if (editingId) {
         const docRef = doc(db, "users", editingId);
         await setDoc(docRef, firestoreData, { merge: true });
         setEmployeeRows((prev) =>
           prev.map((emp) =>
-            emp.id === editingId ? { ...emp, ...formData, employeeID: nextEmployeeID } : emp
+            emp.id === editingId
+              ? {
+                  ...emp,
+                  ...formData,
+                  employeeID: nextEmployeeID,
+                  collectorId: formData.role === "driver" ? formData.collectorId : undefined,
+                }
+              : emp
           )
         );
       } else {
@@ -149,7 +239,16 @@ export default function AdminEmployeePage() {
           ...firestoreData,
           createdAt: serverTimestamp(),
         });
-        setEmployeeRows((prev) => [{ id: docRef.id, ...formData, employeeID: nextEmployeeID } as Employee, ...prev]);
+        const newEmp: Employee = {
+          id: docRef.id,
+          employeeID: nextEmployeeID,
+          name: formData.name,
+          role: formData.role,
+          email: formData.email,
+          contact: formData.contact,
+          collectorId: formData.role === "driver" ? formData.collectorId : undefined,
+        };
+        setEmployeeRows((prev) => [newEmp, ...prev]);
       }
       setIsFormOpen(false);
       setError(null);
@@ -306,8 +405,9 @@ export default function AdminEmployeePage() {
                   <input
                     type="text"
                     value={formData.employeeID}
-                    onChange={(e) => setFormData({ ...formData, employeeID: e.target.value })}
+                    readOnly
                     placeholder="Auto-generates as E001"
+                    style={{ backgroundColor: "#eef2f3", cursor: "not-allowed" }}
                   />
                 </div>
 
@@ -341,6 +441,23 @@ export default function AdminEmployeePage() {
                     placeholder="0771234567"
                   />
                 </div>
+
+                {formData.role === "driver" && (
+                  <div className="form-row">
+                    <label>Associated Collector</label>
+                    <select
+                      value={formData.collectorId}
+                      onChange={(e) => setFormData({ ...formData, collectorId: e.target.value })}
+                    >
+                      <option value="">-- Select Collector --</option>
+                      {collectors.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="form-actions">
                   <button type="button" className="action-button" onClick={handleSaveEmployee}>{editingId !== null ? "Save Changes" : "Add Employee"}</button>

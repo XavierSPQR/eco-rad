@@ -246,7 +246,7 @@ function AuthPageContent() {
     setError("");
     setLoading(true);
     try {
-      const { profile } = await signIn(loginEmail.trim(), loginPassword);
+      const { profile } = await signIn(loginEmail.trim(), loginPassword, role as any);
       if (!profile) {
         setError("Account profile not found. Please contact support.");
         return;

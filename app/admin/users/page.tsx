@@ -40,6 +40,37 @@ interface User {
   createdAt?: Timestamp;
 }
 
+function findFirstGapRID(existingRIDs: string[]): string {
+  const numbers = existingRIDs
+    .map(id => extractPrefixedNumber(id, "R"))
+    .filter((num): num is number => num !== null)
+    .sort((a, b) => a - b);
+
+  let candidate = 1;
+  for (const num of numbers) {
+    if (num === candidate) {
+      candidate++;
+    } else if (num > candidate) {
+      break;
+    }
+  }
+  return formatPrefixedNumber("R", candidate, 3);
+}
+
+const calculateNextRID = async (): Promise<string> => {
+  try {
+    const q = query(collection(db, "users"), where("role", "==", "resident"));
+    const querySnapshot = await getDocs(q);
+    const existingRIDs = querySnapshot.docs
+      .map(doc => doc.data().residentID)
+      .filter((id): id is string => typeof id === "string" && id.startsWith("R"));
+    return findFirstGapRID(existingRIDs);
+  } catch (err) {
+    console.error("Error calculating next RID:", err);
+    return "R001"; // Fallback
+  }
+};
+
 const sidebarItems = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
   { label: "Live Tracking", href: "/admin/live-tracking", icon: "📍" },
@@ -110,21 +141,30 @@ export default function AdminUsersPage() {
     fetchUsers();
   }, []);
 
-  const handleAddClick = () => {
+  const handleAddClick = async () => {
     setEditingId(null);
-    setFormData({
-      name: "",
-      residentID: "",
-      nic: "",
-      email: "",
-      phone: "",
-      address: "",
-      routeID: "",
-      role: "resident",
-      points: 0,
-      residences: 0,
-    });
-    setIsFormOpen(true);
+    setLoading(true);
+    try {
+      const nextRID = await calculateNextRID();
+      setFormData({
+        name: "",
+        residentID: nextRID,
+        nic: "",
+        email: "",
+        phone: "",
+        address: "",
+        routeID: "",
+        role: "resident",
+        points: 0,
+        residences: 0,
+      });
+      setIsFormOpen(true);
+    } catch (err) {
+      console.error("Error generating Resident ID:", err);
+      setError("Failed to generate Resident ID. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEditClick = (user: User) => {
@@ -150,10 +190,10 @@ export default function AdminUsersPage() {
     try {
       // Map name back to fullName for Firestore
       const { name, residentID: _ignoredResidentID, ...otherData } = formData;
-      // If the admin provided a residentID manually, use it, otherwise allocate one
+
       const nextResidentID = formData.residentID.trim()
         ? formData.residentID.trim()
-        : await getNextPrefixedId("R", 3);
+        : await calculateNextRID();
       const firestoreData = {
         ...otherData,
         residentID: nextResidentID,
@@ -401,8 +441,9 @@ export default function AdminUsersPage() {
                 <input
                   type="text"
                   value={formData.residentID}
-                  onChange={(e) => setFormData({ ...formData, residentID: e.target.value })}
+                  readOnly
                   placeholder="Auto-generates as R001"
+                  style={{ backgroundColor: "#eef2f3", cursor: "not-allowed" }}
                 />
               </div>
               <div className="form-row">
