@@ -94,27 +94,28 @@ export default function ResidentRewardsPage() {
   const [loadingBadges, setLoadingBadges] = useState(true);
   const [wasteCollections, setWasteCollections] = useState<any[]>([]);
   const [totalEarnedPoints, setTotalEarnedPoints] = useState(0);
+  const [totalSpentPoints, setTotalSpentPoints] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
   const [redeemName, setRedeemName] = useState("");
   const [redeemNic, setRedeemNic] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Compute available points from wasteCollections (sum of all pointsEarned)
+  // Compute available points = total earned - total spent
   useEffect(() => {
-    const total = wasteCollections.reduce((acc, curr) => acc + (curr.pointsEarned || 0), 0);
-    setTotalEarnedPoints(total);
-    setAvailablePoints(total);
-  }, [wasteCollections]);
+    const earned = wasteCollections.reduce((acc, curr) => acc + (curr.pointsEarned || 0), 0);
+    setTotalEarnedPoints(earned);
+    setAvailablePoints(Math.max(0, earned - totalSpentPoints));
+  }, [wasteCollections, totalSpentPoints]);
 
   useEffect(() => {
     if (profile) {
-      // Also check profile.points as fallback, but primary source is wasteCollections
+      // Fallback: if no wasteCollections data, use profile.points
       if (totalEarnedPoints === 0 && profile.points) {
-        setAvailablePoints(profile.points || 0);
+        setAvailablePoints(Math.max(0, (profile.points || 0) - totalSpentPoints));
       }
     }
-  }, [profile, totalEarnedPoints]);
+  }, [profile, totalEarnedPoints, totalSpentPoints]);
 
   useEffect(() => {
     const q = query(collection(db, "rewards"), where("active", "==", true));
@@ -152,6 +153,20 @@ export default function ResidentRewardsPage() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map((doc) => doc.data());
       setWasteCollections(data);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  // Fetch user redemptions to track spent points
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "redemptions"), where("userId", "==", user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const spent = snapshot.docs.reduce((acc, doc) => {
+        const data = doc.data();
+        return acc + (data.pointsSpent || 0);
+      }, 0);
+      setTotalSpentPoints(spent);
     });
     return () => unsubscribe();
   }, [user]);
@@ -217,6 +232,19 @@ export default function ResidentRewardsPage() {
     if (!offerId) return;
 
     setIsSubmitting(true);
+
+    const pointsRequired = selectedOffer.pointsRequired || selectedOffer.points || 0;
+
+    // Validate using client-side computed available points
+    if (availablePoints < pointsRequired) {
+      setMessage("Insufficient points to redeem this reward.");
+      setIsError(true);
+      setIsSubmitting(false);
+      setModalOpen(false);
+      setSelectedOffer(null);
+      return;
+    }
+
     try {
       await runTransaction(db, async (transaction) => {
         // 1. Get latest data
@@ -229,28 +257,15 @@ export default function ResidentRewardsPage() {
         if (!userSnap.exists()) throw new Error("User does not exist");
         if (!rewardSnap.exists()) throw new Error("Reward does not exist");
 
-        const userData = userSnap.data();
         const rewardData = rewardSnap.data();
-
-        const pointsRequired = rewardData.pointsRequired || rewardData.points || 0;
-        const currentPoints = userData.points || 0;
         const currentQuantity = rewardData.quantity;
 
-        // 2. Validations
-        if (currentPoints < pointsRequired) {
-          throw new Error("Insufficient points");
-        }
-
+        // 2. Validate stock
         if (typeof currentQuantity === 'number' && currentQuantity <= 0) {
           throw new Error("Reward is out of stock");
         }
 
-        // 3. Updates
-        transaction.update(userRef, {
-          points: increment(-pointsRequired),
-          updatedAt: serverTimestamp(),
-        });
-
+        // 3. Update reward quantity if applicable
         if (typeof currentQuantity === 'number') {
           transaction.update(rewardRef, {
             quantity: increment(-1),
@@ -258,6 +273,7 @@ export default function ResidentRewardsPage() {
           });
         }
 
+        // 4. Create redemption record
         const redemptionRef = doc(collection(db, "redemptions"));
         transaction.set(redemptionRef, {
           userId: user.uid,

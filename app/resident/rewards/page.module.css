@@ -345,6 +345,8 @@
 .redeemModalHeader {
   font-weight: 800;
   margin-bottom: 8px;
+  color: #111827;
+  font-size: 1.1rem;
 }
 
 .redeemFormRow {
@@ -354,14 +356,27 @@
   margin-bottom: 12px;
 }
 
+.redeemFormRow label {
+  color: #374151;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
 .redeemInput {
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid #e6f4e8;
+  border: 1px solid #d1d5db;
+  color: #111827;
+  font-weight: 500;
+  background: #fff;
 }
 
 .redeemActions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.redeemModal p, .redeemModal div:not([class]) {
+  color: #374151;
 }
