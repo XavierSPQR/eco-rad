@@ -17,49 +17,61 @@ type WasteCollection = {
   collectorId: string;
 };
 
-// ── SVG Line Chart ────────────────────────────────────────────────────────────
+function isOrganic(type: string) {
+  const t = (type || "").toLowerCase().trim();
+  return t === "organic";
+}
+
+function isRecyclable(type: string) {
+  const t = (type || "").toLowerCase().trim();
+  return t === "recycle" || t === "recyclable";
+}
+
+function isEWaste(type: string) {
+  const t = (type || "").toLowerCase().trim();
+  return t === "e-waste" || t === "e waste";
+}
+
+function parseCollectionDate(w: any): Date | null {
+  const val = w.collectedAt ?? w.collectionDate;
+  if (!val) return null;
+  if (val instanceof Timestamp) {
+    return val.toDate();
+  }
+  if (typeof val === "object" && "toDate" in val && typeof val.toDate === "function") {
+    return val.toDate();
+  }
+  if (typeof val === "object" && typeof val.seconds === "number") {
+    return new Date(val.seconds * 1000);
+  }
+  const d = new Date(val);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// ── SVG Stacked Bar Chart ───────────────────────────────────────────────────────
 
 function WasteChart({ months, data }: { months: string[], data: { recyclable: number[], organic: number[], eWaste: number[] } }) {
   const W = 620, H = 200, PAD = { top: 16, right: 16, bottom: 32, left: 36 };
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
 
-  const allVals = [...data.recyclable, ...data.organic, ...data.eWaste];
-  const maxVal = Math.ceil(Math.max(...allVals, 8) / 8) * 8;
+  // Stacked bar heights: for each month, sum of the three categories
+  const monthTotals = Array.from({ length: 6 }, (_, i) => {
+    return (data.recyclable[i] || 0) + (data.organic[i] || 0) + (data.eWaste[i] || 0);
+  });
+  const maxVal = Math.ceil(Math.max(...monthTotals, 10) / 10) * 10;
 
-  const step = maxVal / 8;
-  const yTicks = Array.from({ length: 9 }, (_, i) => i * step);
+  const step = maxVal / 4;
+  const yTicks = Array.from({ length: 5 }, (_, i) => i * step);
 
-  const xPos = (i: number) => PAD.left + (i / (months.length - 1)) * innerW;
+  const barWidth = 32;
+  const colWidth = innerW / 6;
+  const xPos = (i: number) => PAD.left + i * colWidth + (colWidth - barWidth) / 2;
   const yPos = (v: number) => PAD.top + innerH - (v / maxVal) * innerH;
-
-  function makePath(lineData: number[]) {
-    return lineData.map((v, i) => `${i === 0 ? "M" : "L"}${xPos(i)},${yPos(v)}`).join(" ");
-  }
-
-  function makeArea(areaData: number[]) {
-    const line = makePath(areaData);
-    const base = `L${xPos(areaData.length - 1)},${yPos(0)} L${xPos(0)},${yPos(0)} Z`;
-    return line + " " + base;
-  }
+  const valHeight = (v: number) => (v / maxVal) * innerH;
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-      <defs>
-        <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#a5d6a7" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#a5d6a7" stopOpacity="0.02" />
-        </linearGradient>
-        <linearGradient id="go" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#66bb6a" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#66bb6a" stopOpacity="0.02" />
-        </linearGradient>
-        <linearGradient id="ge" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#795548" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="#795548" stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-
       {/* Y-axis grid + labels */}
       {yTicks.map((t) => (
         <g key={t}>
@@ -70,21 +82,43 @@ function WasteChart({ months, data }: { months: string[], data: { recyclable: nu
         </g>
       ))}
 
+      {/* Stacked bars */}
+      {months.map((m, i) => {
+        const recVal = data.recyclable[i] || 0;
+        const orgVal = data.organic[i] || 0;
+        const eVal = data.eWaste[i] || 0;
+
+        const hRec = valHeight(recVal);
+        const hOrg = valHeight(orgVal);
+        const hE = valHeight(eVal);
+
+        const yRec = PAD.top + innerH - hRec;
+        const yOrg = yRec - hOrg;
+        const yE = yOrg - hE;
+
+        return (
+          <g key={i}>
+            {/* Recyclable segment */}
+            {hRec > 0 && (
+              <rect x={xPos(i)} y={yRec} width={barWidth} height={hRec} fill="#2e7d32" rx="2" />
+            )}
+            {/* Organic segment */}
+            {hOrg > 0 && (
+              <rect x={xPos(i)} y={yOrg} width={barWidth} height={hOrg} fill="#66bb6a" rx="2" />
+            )}
+            {/* E-Waste segment */}
+            {hE > 0 && (
+              <rect x={xPos(i)} y={yE} width={barWidth} height={hE} fill="#795548" rx="2" />
+            )}
+          </g>
+        );
+      })}
+
       {/* X-axis labels */}
       {months.map((m, i) => (
-        <text key={m} x={xPos(i)} y={H - 6} textAnchor="middle"
+        <text key={m} x={xPos(i) + barWidth / 2} y={H - 6} textAnchor="middle"
           fontSize="10" fill="#9ca3af">{m}</text>
       ))}
-
-      {/* Areas */}
-      <path d={makeArea(data.recyclable)} fill="url(#gr)" />
-      <path d={makeArea(data.organic)}    fill="url(#go)" />
-      <path d={makeArea(data.eWaste)}     fill="url(#ge)" />
-
-      {/* Lines */}
-      <path d={makePath(data.recyclable)} fill="none" stroke="#2e7d32" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d={makePath(data.organic)}    fill="none" stroke="#66bb6a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d={makePath(data.eWaste)}     fill="none" stroke="#795548" strokeWidth="2"   strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -145,13 +179,13 @@ export default function ResidentDashboard() {
   const stats = useMemo(() => {
     const total = wasteCollections.reduce((acc, curr) => acc + curr.weight, 0);
     const organic = wasteCollections
-      .filter((w) => w.wasteType === "Organic")
+      .filter((w) => isOrganic(w.wasteType))
       .reduce((acc, curr) => acc + curr.weight, 0);
     const recyclable = wasteCollections
-      .filter((w) => w.wasteType === "Recyclable")
+      .filter((w) => isRecyclable(w.wasteType))
       .reduce((acc, curr) => acc + curr.weight, 0);
     const eWaste = wasteCollections
-      .filter((w) => w.wasteType === "E-Waste")
+      .filter((w) => isEWaste(w.wasteType))
       .reduce((acc, curr) => acc + curr.weight, 0);
 
     const now = new Date();
@@ -159,8 +193,8 @@ export default function ResidentDashboard() {
     const currentYear = now.getFullYear();
     const monthlyPoints = wasteCollections
       .filter((w) => {
-        if (!w.collectedAt) return false;
-        const d = w.collectedAt.toDate();
+        const d = parseCollectionDate(w);
+        if (!d) return false;
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
       })
       .reduce((acc, curr) => acc + curr.pointsEarned, 0);
@@ -238,14 +272,14 @@ export default function ResidentDashboard() {
     const eWaste = new Array(6).fill(0);
 
     wasteCollections.forEach((w) => {
-      if (!w.collectedAt) return;
-      const d = w.collectedAt.toDate();
+      const d = parseCollectionDate(w);
+      if (!d) return;
       const diffMonths = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
       if (diffMonths >= 0 && diffMonths < 6) {
         const index = 5 - diffMonths;
-        if (w.wasteType === "Recyclable") recyclable[index] += w.weight;
-        else if (w.wasteType === "Organic") organic[index] += w.weight;
-        else if (w.wasteType === "E-Waste") eWaste[index] += w.weight;
+        if (isRecyclable(w.wasteType)) recyclable[index] += w.weight;
+        else if (isOrganic(w.wasteType)) organic[index] += w.weight;
+        else if (isEWaste(w.wasteType)) eWaste[index] += w.weight;
       }
     });
 
@@ -256,18 +290,19 @@ export default function ResidentDashboard() {
     const now = new Date();
     const currentYear = now.getFullYear();
     const thisYearCollections = wasteCollections.filter((w) => {
-      if (!w.collectedAt) return false;
-      return w.collectedAt.toDate().getFullYear() === currentYear;
+      const d = parseCollectionDate(w);
+      if (!d) return false;
+      return d.getFullYear() === currentYear;
     });
 
     const recyclable = thisYearCollections
-      .filter((w) => w.wasteType === "Recyclable")
+      .filter((w) => isRecyclable(w.wasteType))
       .reduce((acc, curr) => acc + curr.weight, 0);
     const organic = thisYearCollections
-      .filter((w) => w.wasteType === "Organic")
+      .filter((w) => isOrganic(w.wasteType))
       .reduce((acc, curr) => acc + curr.weight, 0);
     const eWaste = thisYearCollections
-      .filter((w) => w.wasteType === "E-Waste")
+      .filter((w) => isEWaste(w.wasteType))
       .reduce((acc, curr) => acc + curr.weight, 0);
 
     const plasticDiverted = recyclable * 0.476;

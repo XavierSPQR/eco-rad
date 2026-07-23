@@ -39,9 +39,24 @@ export default function CollectorTasksPage() {
   const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "completed">("all");
   const [vehicleData, setVehicleData] = useState<{ id?: string; area?: string } | null>(null);
   const [activeTask, setActiveTask] = useState<ScheduleTask | null>(null);
-  const [activeRoutePoints, setActiveRoutePoints] = useState<string[]>([]);
-  const [completedPoints, setCompletedPoints] = useState<boolean[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const currentActiveTask = useMemo(() => {
+    if (!activeTask) return null;
+    return tasks.find((t) => t.id === activeTask.id) || activeTask;
+  }, [activeTask, tasks]);
+
+  const activeRoutePoints = useMemo(() => {
+    if (!currentActiveTask) return [];
+    const matchedRoute = routes.find((route) => route.id.toLowerCase() === currentActiveTask.routeId.toLowerCase());
+    return matchedRoute?.points.length ? matchedRoute.points : [];
+  }, [currentActiveTask, routes]);
+
+  const completedPoints = useMemo(() => {
+    if (!currentActiveTask || activeRoutePoints.length === 0) return [];
+    const persisted = (currentActiveTask as any).completedPoints || [];
+    return activeRoutePoints.map((p) => persisted.includes(p));
+  }, [currentActiveTask, activeRoutePoints]);
 
   useLiveTracking(user, profile);
 
@@ -53,8 +68,7 @@ export default function CollectorTasksPage() {
     const qSchedules = query(
       collection(db, "schedules"),
       where("collectorId", "==", collectorAccountId),
-      where("status", "in", ["pending", "started", "completed"]),
-      orderBy("date", "asc")
+      where("status", "in", ["pending", "started", "completed"])
     );
 
     const unsubscribeSchedules = onSnapshot(qSchedules, (snapshot) => {
@@ -74,7 +88,18 @@ export default function CollectorTasksPage() {
           status: String(data.status || "pending") as ScheduleTask["status"],
           createdAt: data.createdAt instanceof Timestamp ? data.createdAt : null,
           updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt : null,
-        } satisfies ScheduleTask;
+          completedPoints: Array.isArray(data.completedPoints) ? data.completedPoints : [],
+        } satisfies ScheduleTask & { completedPoints: string[] };
+      });
+
+      // Sort client-side by createdAt descending (most recent task on top)
+      nextTasks.sort((a, b) => {
+        const aTime = a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+        return b.date.localeCompare(a.date);
       });
 
       setTasks(nextTasks);
@@ -143,52 +168,48 @@ export default function CollectorTasksPage() {
     return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
   };
 
-  const openRoutePoints = (task: ScheduleTask) => {
-    const matchedRoute = routes.find((route) => route.id.toLowerCase() === task.routeId.toLowerCase());
-    const points = matchedRoute?.points.length ? matchedRoute.points : [];
+  const handlePointToggle = async (pointName: string, currentlyChecked: boolean) => {
+    if (!currentActiveTask) return;
 
-    setActiveTask(task);
-    setActiveRoutePoints(points);
-    setCompletedPoints(new Array(points.length).fill(false));
-  };
+    const persisted = (currentActiveTask as any).completedPoints || [];
+    let nextPersisted: string[];
+    if (currentlyChecked) {
+      nextPersisted = persisted.filter((p: string) => p !== pointName);
+    } else {
+      nextPersisted = [...persisted, pointName];
+    }
 
-  const handlePointToggle = (index: number) => {
-    setCompletedPoints((current) => {
-      const next = [...current];
-      next[index] = !next[index];
-      const allCompleted = next.every(Boolean);
+    const allCompleted = activeRoutePoints.every((p) => nextPersisted.includes(p));
 
-      if (allCompleted && activeTask) {
-        void completeTask(activeTask.id);
+    try {
+      const updates: Record<string, any> = {
+        completedPoints: nextPersisted,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (allCompleted) {
+        updates.status = "completed";
+        updates.completedAt = serverTimestamp();
       }
 
-      return next;
-    });
-  };
+      await updateDoc(doc(db, "schedules", currentActiveTask.id), updates);
 
-  const completeTask = async (taskId: string) => {
-    if (!activeTask) return;
-    setIsSubmitting(true);
-    try {
-      await updateDoc(doc(db, "schedules", taskId), {
-        status: "completed",
-        completedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      setActiveTask(null);
-      setActiveRoutePoints([]);
-      setCompletedPoints([]);
+      if (allCompleted) {
+        const { notifyAllAdmins } = await import("@/lib/adminNotifications");
+        await notifyAllAdmins(
+          "Task completed",
+          `Collector ${currentActiveTask.collectorName || "Collector"} has completed the schedule for route ${currentActiveTask.routeId} in ${currentActiveTask.region}.`,
+          "truck"
+        );
+        setActiveTask(null);
+      }
     } catch (error) {
-      console.error("Error completing task:", error);
-    } finally {
-      setIsSubmitting(false);
+      console.error("Error updating checklist:", error);
     }
   };
 
   const handleManualClose = () => {
     setActiveTask(null);
-    setActiveRoutePoints([]);
-    setCompletedPoints([]);
   };
 
   const handleStartTask = async (task: ScheduleTask) => {
@@ -197,7 +218,7 @@ export default function CollectorTasksPage() {
         status: "started",
         updatedAt: serverTimestamp(),
       });
-      openRoutePoints(task);
+      setActiveTask(task);
     } catch (error) {
       console.error("Error starting task:", error);
     }
@@ -344,8 +365,18 @@ export default function CollectorTasksPage() {
                             {isCompleted ? (
                               <span className="rounded-full bg-gray-200 px-4 py-2 text-xs font-bold uppercase tracking-wide text-gray-600">Completed</span>
                             ) : (
-                              <button type="button" onClick={() => void handleStartTask(task)} className="rounded-full bg-[#2E7D32] px-5 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-[#235f28]">
-                                Start
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (task.status === "started") {
+                                    setActiveTask(task);
+                                  } else {
+                                    void handleStartTask(task);
+                                  }
+                                }}
+                                className="rounded-full bg-[#2E7D32] px-5 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-[#235f28]"
+                              >
+                                {task.status === "started" ? "Resume" : "Start"}
                               </button>
                             )}
                           </div>
@@ -382,7 +413,7 @@ export default function CollectorTasksPage() {
                       <input
                         type="checkbox"
                         checked={completedPoints[index] || false}
-                        onChange={() => handlePointToggle(index)}
+                        onChange={() => handlePointToggle(point, completedPoints[index] || false)}
                         className="h-4 w-4 rounded border-gray-300 text-[#2E7D32] focus:ring-[#2E7D32]"
                       />
                       <span className="text-sm font-medium text-gray-700">{point}</span>
