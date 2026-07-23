@@ -23,6 +23,7 @@ import {
   calculatePointsEarnedWithRates,
   DEFAULT_WASTE_POINT_RATE_CONFIG,
   getWastePointRateConfig,
+  watchWastePointRateConfig,
   migrateLegacyWasteTypes,
   normalizeWasteType,
   WASTE_TYPE_OPTIONS,
@@ -191,11 +192,14 @@ export default function AdminCollectionCenterPage() {
     void migrateLegacyWasteTypes();
     void loadResidentOptions();
     void backfillMissingResidentData();
-    void getWastePointRateConfig().then(setWastePointRates).catch((error) => {
-      console.error("Failed to load point settings:", error);
+
+    const unsubscribeRates = watchWastePointRateConfig(db, setWastePointRates, (err) => {
+      console.error("Failed to watch point settings:", err);
     });
 
-    return undefined;
+    return () => {
+      unsubscribeRates();
+    };
   }, []);
 
   useEffect(() => {
@@ -221,6 +225,20 @@ export default function AdminCollectionCenterPage() {
           updatedAt: data.updatedAt ?? null,
         } as ResidentCollectionRow;
       });
+
+      // Sort in-memory: createdAt descending first, then fall back to collectionDate descending
+      snapshotRows.sort((a, b) => {
+        const aTime = a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+
+        const aDate = a.collectionDate instanceof Timestamp ? a.collectionDate.toMillis() : a.collectionDate ? new Date(a.collectionDate).getTime() : 0;
+        const bDate = b.collectionDate instanceof Timestamp ? b.collectionDate.toMillis() : b.collectionDate ? new Date(b.collectionDate).getTime() : 0;
+        return bDate - aDate;
+      });
+
       setRows(snapshotRows);
     });
 

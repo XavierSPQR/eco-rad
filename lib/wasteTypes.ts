@@ -135,6 +135,7 @@ export async function migrateLegacyWasteTypes(firestoreDb: Firestore = db) {
   const snapshot = await getDocs(collection(firestoreDb, "wasteCollections"));
   if (snapshot.empty) return 0;
 
+  const rates = await getWastePointRateConfig(firestoreDb);
   const batch = writeBatch(firestoreDb);
   let changed = 0;
 
@@ -158,7 +159,7 @@ export async function migrateLegacyWasteTypes(firestoreDb: Firestore = db) {
     }
 
     if (data.pointsEarned == null && typeof data.weight === "number") {
-      updates.pointsEarned = calculatePointsEarned(data.weight, normalizedWasteType);
+      updates.pointsEarned = calculatePointsEarnedWithRates(data.weight, normalizedWasteType, rates);
     }
 
     if (data.wasteType !== normalizedWasteType || data.collectionDate == null && data.collectedAt != null || data.residentID == null && typeof data.id === "string") {

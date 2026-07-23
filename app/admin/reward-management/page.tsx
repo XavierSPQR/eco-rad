@@ -113,9 +113,9 @@ export default function AdminBadgeManagementPage() {
 
       const data = snapshot.data();
       setPointRatesKg({
-        Organic: Number(data?.Organic ?? DEFAULT_WASTE_POINT_RATE_CONFIG.Organic * 1000),
-        "E-waste": Number(data?.["E-waste"] ?? DEFAULT_WASTE_POINT_RATE_CONFIG["E-waste"] * 1000),
-        Recycle: Number(data?.Recycle ?? DEFAULT_WASTE_POINT_RATE_CONFIG.Recycle * 1000),
+        Organic: Number(data?.Organic ?? DEFAULT_WASTE_POINT_RATE_CONFIG.Organic) * 1000,
+        "E-waste": Number(data?.["E-waste"] ?? DEFAULT_WASTE_POINT_RATE_CONFIG["E-waste"]) * 1000,
+        Recycle: Number(data?.Recycle ?? DEFAULT_WASTE_POINT_RATE_CONFIG.Recycle) * 1000,
       });
       setLoadingPoints(false);
     };
