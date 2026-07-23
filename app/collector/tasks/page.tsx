@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc, where, getDocs, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 import { useLiveTracking } from "@/lib/useLiveTracking";
@@ -29,6 +29,31 @@ type RouteData = {
   region: string;
   points: string[];
 };
+
+async function notifyResidentsOnRoute(routeId: string, title: string, description: string) {
+  try {
+    const residentsQuery = query(
+      collection(db, "users"),
+      where("role", "==", "resident"),
+      where("routeID", "==", routeId)
+    );
+    const snapshot = await getDocs(residentsQuery);
+
+    const notificationPromises = snapshot.docs.map((docSnap) =>
+      addDoc(collection(db, "notifications"), {
+        userId: docSnap.id,
+        title,
+        description,
+        type: "truck",
+        read: false,
+        createdAt: serverTimestamp(),
+      })
+    );
+    await Promise.all(notificationPromises);
+  } catch (error) {
+    console.error("Error sending resident notifications:", error);
+  }
+}
 
 export default function CollectorTasksPage() {
   const { user, profile } = useAuth();
@@ -201,7 +226,22 @@ export default function CollectorTasksPage() {
           `Collector ${currentActiveTask.collectorName || "Collector"} has completed the schedule for route ${currentActiveTask.routeId} in ${currentActiveTask.region}.`,
           "truck"
         );
+
+        // Parallel call to notify all residents on the route
+        void notifyResidentsOnRoute(
+          currentActiveTask.routeId,
+          "Route Completed",
+          `Waste collection has been successfully completed for route ${currentActiveTask.routeId}.`
+        );
+
         setActiveTask(null);
+      } else if (!currentlyChecked) {
+        // Only trigger Checkpoint Collected if it's ticked and did not complete the entire task
+        void notifyResidentsOnRoute(
+          currentActiveTask.routeId,
+          "Checkpoint Collected",
+          `Waste collection has been completed at checkpoint '${pointName}' on route ${currentActiveTask.routeId}.`
+        );
       }
     } catch (error) {
       console.error("Error updating checklist:", error);
@@ -219,6 +259,13 @@ export default function CollectorTasksPage() {
         updatedAt: serverTimestamp(),
       });
       setActiveTask(task);
+
+      // Asynchronously trigger resident notification
+      void notifyResidentsOnRoute(
+        task.routeId,
+        "Collection Started",
+        `Waste collection has started for route ${task.routeId} in ${task.region}. Please prepare your bins!`
+      );
     } catch (error) {
       console.error("Error starting task:", error);
     }
