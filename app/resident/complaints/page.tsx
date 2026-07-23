@@ -163,8 +163,8 @@ export default function ComplaintsPage() {
     <div className={styles.pageRoot}>
       <header className={styles.pageHeader}>
         <div>
-          <p className={styles.pageOverline}>AI Complaint Center</p>
-          <h1 className={styles.pageTitle}>Submit issues — our AI categorizes and routes them automatically.</h1>
+          <p className={styles.pageOverline}>Complaint Center</p>
+          <h1 className={styles.pageTitle}>Submit Complaint </h1>
         </div>
       </header>
 
@@ -190,18 +190,13 @@ export default function ComplaintsPage() {
             <textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="Describe the issue. Our AI will tag and prioritize it."
+              placeholder="Describe the issue."
               disabled={submitLoading}
             />
           </label>
 
           <div className={styles.actionRow}>
-            <label className={styles.fileButton}>
-              <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={submitLoading} />
-              Photo
-              {photoFile ? <span className={styles.fileLabel}>{photoFile.name}</span> : null}
-            </label>
-
+        
             <button type="button" className={styles.locationButton} onClick={handleLocation} disabled={submitLoading}>
               {geoLoading ? "Locating…" : "Location"}
             </button>
@@ -211,7 +206,6 @@ export default function ComplaintsPage() {
             {submitLoading ? "Submitting..." : "Submit"}
           </button>
 
-          <div className={styles.aiHint}>AI suggestion: Add nearby landmark for faster resolution.</div>
 
           {message === "success" && <div className={styles.messageSuccess}>Complaint submitted and is now in review.</div>}
           {message === "error" && <div className={styles.messageError}>Please fill subject and description, or allow location access.</div>}
