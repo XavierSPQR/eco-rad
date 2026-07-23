@@ -1,0 +1,49 @@
+
+> eco-rad@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+✓ Ready in 498ms
+
+○ Compiling /auth ...
+ GET /auth?role=admin 200 in 5.6s (next.js: 4.7s, application-code: 839ms)
+ GET /admin/overview 200 in 813ms (next.js: 765ms, application-code: 48ms)
+ GET /admin/schedules 200 in 871ms (next.js: 670ms, application-code: 201ms)
+ GET /auth?role=admin 200 in 143ms (next.js: 10ms, application-code: 133ms)
+ GET /admin/overview 200 in 46ms (next.js: 5ms, application-code: 41ms)
+ GET /admin/schedules 200 in 108ms (next.js: 5ms, application-code: 103ms)
+ GET /auth?role=collector 200 in 70ms (next.js: 3ms, application-code: 66ms)
+ GET /collector 200 in 771ms (next.js: 734ms, application-code: 37ms)
+[browser] Error watching location: [object GeolocationPositionError]
+    at useLiveTracking.useEffect.watchId (lib/useLiveTracking.ts:28:17)
+  26 |       },
+  27 |       (error) => {
+> 28 |         console.error("Error watching location:", error);
+     |                 ^
+  29 |       },
+  30 |       {
+  31 |         enableHighAccuracy: true, (lib/useLiveTracking.ts:28:17)
+ GET /collector/notification 200 in 721ms (next.js: 626ms, application-code: 95ms)
+ GET /auth?role=resident 200 in 60ms (next.js: 4ms, application-code: 56ms)
+ GET /resident 200 in 786ms (next.js: 748ms, application-code: 38ms)
+ GET /resident/notifications 200 in 833ms (next.js: 650ms, application-code: 184ms)
+ GET /auth?role=admin 200 in 73ms (next.js: 4ms, application-code: 70ms)
+ GET /admin/overview 200 in 43ms (next.js: 3ms, application-code: 40ms)
+ GET /admin/schedules 200 in 82ms (next.js: 3ms, application-code: 79ms)
+ GET /auth?role=collector 200 in 67ms (next.js: 3ms, application-code: 64ms)
+ GET /collector 200 in 34ms (next.js: 3ms, application-code: 31ms)
+ GET /collector/notification 200 in 72ms (next.js: 3ms, application-code: 69ms)
+ GET /auth?role=resident 200 in 57ms (next.js: 6ms, application-code: 51ms)
+ GET /resident 200 in 29ms (next.js: 3ms, application-code: 25ms)
+ GET /resident/notifications 200 in 62ms (next.js: 9ms, application-code: 53ms)
+ GET /auth?role=admin 200 in 56ms (next.js: 3ms, application-code: 53ms)
+ GET /admin/overview 200 in 49ms (next.js: 6ms, application-code: 42ms)
+ GET /admin/schedules 200 in 91ms (next.js: 3ms, application-code: 87ms)
+ GET /auth?role=collector 200 in 64ms (next.js: 3ms, application-code: 61ms)
+ GET /collector 200 in 43ms (next.js: 3ms, application-code: 39ms)
+ GET /collector/notification 200 in 60ms (next.js: 2ms, application-code: 57ms)
+ GET /auth?role=resident 200 in 149ms (next.js: 5ms, application-code: 144ms)
+ GET /resident 200 in 49ms (next.js: 5ms, application-code: 44ms)
+ GET /resident/notifications 200 in 127ms (next.js: 14ms, application-code: 112ms)
