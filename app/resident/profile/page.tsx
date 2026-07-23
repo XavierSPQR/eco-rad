@@ -138,7 +138,7 @@ export default function ProfilePage() {
         <div>
           <p className={styles.overline}>Settings</p>
           <h1 className={styles.title}>
-            Manage your account, preferences and privacy.
+            Manage your account, Preferences and Privacy.
           </h1>
         </div>
       </header>

@@ -89,7 +89,7 @@ export default function NotificationsPage() {
       <header className={styles.header}>
         <div>
           <p className={styles.overline}>Notifications</p>
-          <h1 className={styles.title}>Pickup updates, rewards, and announcements.</h1>
+          <h1 className={styles.title}>Pickup Updates, Rewards, and Announcements.</h1>
         </div>
       </header>
 
