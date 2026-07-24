@@ -5,8 +5,10 @@
 ▲ Next.js 16.2.6 (Turbopack)
 - Local:         http://localhost:3000
 - Network:       http://192.168.0.2:3000
-✓ Ready in 761ms
+✓ Ready in 511ms
 
-○ Compiling / ...
- GET / 200 in 6.7s (next.js: 5.7s, application-code: 998ms)
- GET / 200 in 84ms (next.js: 5ms, application-code: 79ms)
+○ Compiling /auth ...
+ GET /auth 200 in 6.4s (next.js: 5.5s, application-code: 914ms)
+ HEAD /auth 200 in 76ms (next.js: 5ms, application-code: 71ms)
+ GET /auth 200 in 77ms (next.js: 5ms, application-code: 72ms)
+ GET /auth?role=admin 200 in 75ms (next.js: 4ms, application-code: 71ms)

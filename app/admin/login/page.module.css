@@ -202,40 +202,8 @@
   border: 1px solid rgba(20,80,40,0.06);
 }
 
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin: 1.5rem 0;
-}
-
-.dividerLine { flex: 1; height: 1px; background: #edf3ef; }
-.dividerText { font-size: 0.75rem; color: #9aa39a; text-transform: uppercase; }
-
-.socialButtons { display: flex; gap: 1rem; }
-.socialButton {
-  flex: 1;
-  padding: 0.75rem;
-  border: 2px solid #eef6ef;
-  background: white;
-  border-radius: 40px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #355b3f;
-}
-
-.socialButton:hover { background: #f6fff7; transform: translateY(-2px); }
-
-.socialIcon { width: 20px; height: 20px; display:flex; align-items:center; justify-content:center; }
-
 @media (max-width: 480px) {
   .card { padding: 1.6rem; }
   .title { font-size: 1.5rem; }
   .buttonContainer { flex-direction: column; }
-  .socialButtons { flex-direction: column; }
 }
