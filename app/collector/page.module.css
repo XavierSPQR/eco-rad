@@ -15,14 +15,15 @@
 .main { flex:1; padding:28px 36px }
 .header { display:flex; justify-content:space-between; align-items:center; gap:20px; }
 .role { font-size:0.8rem; letter-spacing:0.12em; color:#166534; font-weight:700 }
-.greeting { margin:4px 0; font-size:1.8rem }
+.greeting { margin:4px 0; font-size:1.8rem; color:#166534 }
 .sub { color:#6b7280 }
 .kpiRing { width:120px; height:120px; border-radius:999px; background:conic-gradient(#2e7d32 0 82%, #e6f6ea 82% 100%); display:grid; place-items:center }
-.kpiInner { background:#fff; width:86px; height:86px; border-radius:999px; display:grid; place-items:center; font-weight:800 }
+.kpiInner { background:#fff; width:86px; height:86px; border-radius:999px; display:grid; place-items:center; font-weight:800; color:#166534 }
 .kpiLabel { font-size:0.75rem; color:#6b7280; font-weight:600 }
 .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:22px }
 .statCard { background:#fff; border-radius:16px; padding:18px; box-shadow:0 10px 30px rgba(30,78,29,0.05) }
 .statNum { font-weight:800; font-size:1.25rem; color:#166534 }
+.statLabel { color:#166534; font-weight:600; font-size:0.85rem; }
 .panels { display:flex; gap:20px; margin-top:26px }
 .pendingPanel { flex:1; background:#fff; border-radius:16px; padding:18px }
 .table { width:100%; border-collapse:collapse; margin-top:12px }
@@ -33,8 +34,9 @@
 .scanBox { background:#fff; border-radius:16px; padding:22px; height:200px; display:grid; place-items:center; border:1px dashed #dceadc }
 .scanLabel { color:#6b7280 }
 .checklist { background:#fff; border-radius:16px; padding:16px }
-.checklist h4 { margin:0 0 8px }
+.checklist h4 { margin:0 0 8px; color:#166534 }
 .checklist ul { margin:0; padding-left:18px }
+.checklist li { color:#166534; font-weight:500 }
 
 @media (max-width: 900px) {
   .sidebar { display:none }

@@ -265,9 +265,9 @@ export default function CollectorDashboard() {
         </header>
 
         <section className={styles.stats}>
-          <div className={styles.statCard}><div className={styles.statNum}>{stats.completed}</div><div>Completed pickups</div></div>
-          <div className={styles.statCard}><div className={styles.statNum}>{stats.pending}</div><div>Pending pickups</div></div>
-          <div className={styles.statCard}><div className={styles.statNum}>{stats.verifications}</div><div>Verifications</div></div>
+          <div className={styles.statCard}><div className={styles.statNum}>{stats.completed}</div><div className={styles.statLabel}>Completed pickups</div></div>
+          <div className={styles.statCard}><div className={styles.statNum}>{stats.pending}</div><div className={styles.statLabel}>Pending pickups</div></div>
+          <div className={styles.statCard}><div className={styles.statNum}>{stats.verifications}</div><div className={styles.statLabel}>Verifications</div></div>
         </section>
 
         <section className={styles.panels}>
